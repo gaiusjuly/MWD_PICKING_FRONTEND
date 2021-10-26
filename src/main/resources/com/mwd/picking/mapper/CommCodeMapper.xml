@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mwd.picking.mapper.CommCodeMapper">
+    
+    
+<!-- 		1. 주문(배송)상태
+		공통코드ID : OMS_STATUS
+		
+		01	주문예정
+		05	배차완료
+		10	피킹지시
+		15	피킹중
+		20	피킹완료
+		35	검수중
+		40	검수완료
+		45	상차중
+		50	상차완료
+		55	배송시작
+		60	배송완료
+		99	삭제 -->
+	<select id="selectOMS_STATUS" resultType="hashmap">
+	<![CDATA[
+		SELECT * FROM IF_MT_ETC_CODE
+			WHERE 1=1
+			AND ETC_ID = 'OMS_STATUS'
+			AND SYSTEM_USE_FLAG = 'MWD'
+			AND USABLE_FLAG = '1'
+			ORDER BY SORT_ID
+    ]]>
+    </select>
+    
+<!--     2. 주문유형
+공통코드ID : OMS_DELI_DIV
+
+O01	정상주문
+O03	재주문
+O04	반품주문
+O09	취소주문 -->
+    <select id="selectOMS_DELI_DIV" resultType="hashmap">
+	<![CDATA[
+		SELECT * FROM IF_MT_ETC_CODE
+			WHERE 1=1
+			AND ETC_ID = 'OMS_DELI_DIV'
+			AND SYSTEM_USE_FLAG = 'MWD'
+			AND USABLE_FLAG = '1'
+			ORDER BY SORT_ID
+    ]]>
+    </select>
+
+<!-- 3. 회차
+공통코드ID : OMS_DELI_ORDER
+
+1	1회차
+2	2회차
+3	3회차
+4	4회차
+5	5회차
+6	6회차 -->
+
+    <select id="selectOMS_DELI_ORDER" resultType="hashmap">
+	<![CDATA[
+		SELECT * FROM IF_MT_ETC_CODE
+			WHERE 1=1
+			AND ETC_ID = 'OMS_DELI_ORDER'
+			AND SYSTEM_USE_FLAG = 'MWD'
+			AND USABLE_FLAG = '1'
+			ORDER BY SORT_ID
+    ]]>
+    </select>
+    
+<!--     4. 일반새벽배송
+공통코드ID : OMS_DELI_METHOD
+
+1	일반
+2	픽업(DT)
+3	새벽배송 -->
+
+    <select id="selectOMS_DELI_METHOD" resultType="hashmap">
+	<![CDATA[
+		SELECT * FROM IF_MT_ETC_CODE
+			WHERE 1=1
+			AND ETC_ID = 'OMS_DELI_METHOD'
+			AND SYSTEM_USE_FLAG = 'MWD'
+			AND USABLE_FLAG = '1'
+			ORDER BY SORT_ID
+    ]]>
+    </select>
+   
+<!--    5. 피킹존
+공통코드ID : OMS_PICK_AREA
+
+A	A구역
+B	B구역
+C	C구역
+D	D구역
+E	E구역 -->
+         
+    <select id="selectOMS_PICK_AREA" resultType="hashmap">
+	<![CDATA[
+		SELECT * FROM IF_MT_ETC_CODE
+			WHERE 1=1
+			AND ETC_ID = 'OMS_PICK_AREA'
+			AND SYSTEM_USE_FLAG = 'MWD'
+			AND USABLE_FLAG = '1'
+			ORDER BY SORT_ID
+    ]]>
+    </select>
+            
+</mapper>

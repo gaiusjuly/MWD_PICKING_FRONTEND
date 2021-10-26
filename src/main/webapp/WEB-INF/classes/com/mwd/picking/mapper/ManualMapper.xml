@@ -1,0 +1,330 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mwd.picking.mapper.ManualMapper">
+
+<select id="selectNewDeliNo" parameterType="string" resultType="string">
+	 SELECT DELI_DATE||LPAD(DELI_ORDER,2,0)||LPAD(MIF.S_DELI_NO.NEXTVAL,5,'0') AS DELI_NO FROM IF_TR_HEADER
+     WHERE DELI_NO = #{deliNo}
+</select>
+
+<select id="selectManualPick" parameterType="Manual" resultType="Manual">
+  SELECT DISTINCT *
+	FROM
+	(
+	SELECT /*+ INDEX(A PK1) */
+	    ROWNUM AS RNUM,
+		  A.CENTER_CODE,
+			A.DELI_NO,
+			A.DELI_DETAIL_SEQ,
+			-- 바코드
+			A.BARCODE,
+			--배송회차
+			A.DELI_DATE,
+			--배송회차
+			A.DELI_ORDER,
+			A.DELI_METHOD,
+			-- 주문자
+			A.ORDER_NAME,
+			--주문번호
+			A.ORDER_CODE,
+			--주문상세번호
+			A.ORDER_DETAIL_SEQ,
+			--배송메세지
+			A.ORDER_MESSAGE,
+			--상품코드
+			A.PRODUCT_ID,
+			--상품명
+			A.PRODUCT_NAME,
+			-- 주문수량
+			A.QTY,
+			-- 피킹수량
+			A.PICK_QTY,
+			A.STATUS,
+			--상태
+			A.STATSU_NAME AS STATUS_NAME,
+			--발행횟수
+			A.VARIANT_PRINT_CNT,
+			-- 담당자
+			A.VARIANT_PRINT_BY,
+			-- 보관코드
+			A.DELI_SAVE_CODE,
+			-- 포장유형(D1:상온, D2:냉장, D3:냉동)
+			A.PACK_METHOD_FLAG,
+			-- 차량 아이디
+			A.CAR_ID,
+			-- 차량 번호
+			A.CAR_NUMBER,
+			-- 배송기사 아이디
+			A.DELI_ID,
+			-- 배송기사명
+			A.DELI_NAME,
+			-- 대체상품코드
+			A.REPLACE_CODE,
+			A.SALE_MONEY,
+			A.CNT
+FROM
+	(
+		SELECT
+			A.CENTER_CODE,
+			A.DELI_NO,
+			B.DELI_DETAIL_SEQ,
+			-- 바코드
+			B.PACK_METHOD_FLAG || A.DELI_NO || LPAD(B.DELI_DETAIL_SEQ, 3, 0) AS BARCODE,
+			--배송회차
+			A.DELI_DATE,
+			A.DELI_METHOD,
+			--배송회차
+			A.DELI_ORDER,
+			-- 주문자
+			A.ORDER_NAME,
+			--주문번호
+			B.ORDER_CODE,
+			--주문상세번호
+			B.ORDER_DETAIL_SEQ,
+			--배송메세지
+			D.ORDER_MESSAGE,
+			--상품코드
+			B.PRODUCT_ID,
+			--상품명
+			C.PRODUCT_NAME,
+			-- 주문수량
+			B.QTY,
+			-- 피킹수량
+			B.PICK_QTY,
+			B.STATUS,
+			--상태
+			MIF.F_GET_ETCNM('OMS_STATUS', B.STATUS)                          AS STATSU_NAME,
+			--발행횟수
+			B.VARIANT_PRINT_CNT,
+			-- 담당자
+			B.VARIANT_PRINT_BY,
+			-- 보관코드
+			A.DELI_SAVE_CODE,
+			-- 포장유형(D1:상온, D2:냉장, D3:냉동)
+			B.PACK_METHOD_FLAG,
+			-- 차량 아이디
+			A.CAR_ID,
+			-- 차량 번호
+			A.CAR_NUMBER,
+			-- 배송기사 아이디
+			A.DELI_ID,
+			-- 배송기사명
+			A.DELI_NAME,
+			-- 대체상품코드
+			B.REPLACE_CODE
+		, B.SALE_MONEY	
+		, COUNT(*) OVER () CNT
+		FROM MIF.IF_TR_HEADER A, MIF.IF_TR_DETAIL B, SA_TR_HEADER_V1 D, MIF.MT_PRODUCT_V1 C
+		WHERE 1 = 1
+					AND A.DELI_NO = B.DELI_NO
+					AND B.ORDER_CODE = D.ORDER_CODE
+					AND A.CENTER_CODE = C.STORE_CODE
+					AND B.PRODUCT_ID = C.PRODUCT_CODE
+					AND A.DELI_PICK_TYPE = '1'
+					AND A.STATUS > '05'
+					AND A.STATUS != '99'
+					AND B.STATUS != '99'
+					AND A.CENTER_CODE = #{storeCode}
+					 <if test='deliDate != null and deliDate != ""'>
+			            <![CDATA[
+				        AND A.DELI_DATE = #{deliDate}
+				    	]]>
+			        </if>
+			        <if test='deliOrder != null and deliOrder != ""'>
+			            <![CDATA[
+				        AND A.DELI_ORDER = #{deliOrder}
+				    	]]>
+			        </if>
+			         <if test='status != null and status != ""'>
+			            <![CDATA[
+				        AND A.DELI_METHOD = #{status}
+				    	]]>
+			        </if>
+		ORDER BY B.VARIANT_PRINT_BY DESC, B.VARIANT_PRINT_BY, B.PRODUCT_ID, B.ORDER_CODE
+     ) A
+
+	  WHERE 1=1
+	 )
+	  WHERE RNUM BETWEEN ${pageGroup} AND ${limit}
+</select>
+
+<select id="selectEventList" parameterType="Event" resultType="Event">
+SELECT DISTINCT *
+	FROM
+    (
+      SELECT
+        /*+ INDEX(A PK1) */
+        ROWNUM AS RNUM,
+        A.ORDER_CODE,
+        A.ORDER_ID,
+        A.ORDER_NAME,
+        A.DELI_DATE,
+        A.STATUS,
+        A.DELI_SAVE_CODE,
+        A.DELI_ORDER_SORT,
+        F_GET_ETCNM('OMS_STATUS', A.STATUS) AS STATUS_NM,
+        -- 상태명
+        F_GET_FREEGIFT@ECODEV(A.ORDER_CODE) AS FREEGIFT -- 행사내용
+        ,
+        A.CNT
+      FROM (
+             SELECT
+               B.ORDER_CODE,
+               -- 주문번호
+               A.ORDER_ID,
+               -- 주문자ID
+               A.ORDER_NAME,
+               -- 주문자
+               A.DELI_DATE,
+               -- 배송일자
+               MIN(A.STATUS)          AS STATUS,
+               -- 상태
+               MIN(A.DELI_SAVE_CODE)  AS DELI_SAVE_CODE,
+               -- 보관
+               MIN(A.DELI_ORDER_SORT) AS DELI_ORDER_SORT -- 상차
+               ,
+               COUNT(*)
+               OVER ()                   CNT
+             FROM IF_TR_HEADER A,
+               IF_TR_DETAIL B
+             WHERE A.DELI_NO = B.DELI_NO
+                   -- 점포코드 (매장)
+                   AND A.CENTER_CODE = '2701'
+                   -- 배송주문유형 : B2C 고정
+                   AND A.DELI_ORDER_TYPE = 'B2C'
+                   -- DETAIL 상태, 99 : 삭제건 제외
+                   AND A.STATUS != '99'
+                   AND B.STATUS != '99'
+                    <if test='deliDate != null and deliDate != ""'>
+			            <![CDATA[
+				        AND A.DELI_DATE = #{deliDate}
+				    	]]>
+			        </if>
+			         <if test='status != null and status != ""'>
+			            <![CDATA[
+				        AND A.DELI_METHOD = #{status}
+				    	]]>
+			        </if>
+                 --  AND A.DELI_ORDER = '1' -- 배송회차
+             GROUP BY B.ORDER_CODE, -- 주문번호
+               A.ORDER_ID, -- 주문자ID
+               A.ORDER_NAME, -- 주문자
+               A.DELI_DATE -- 배송일자
+           ) A
+      -- ORDER BY A.ORDER_CODE ASC
+   ) B
+	  WHERE RNUM BETWEEN ${pageGroup} AND ${limit}
+</select>
+
+<select id="selectInspection" parameterType="Inspection" resultType="Inspection">
+ SELECT DISTINCT *
+	FROM
+	(
+	SELECT /*+ INDEX(A PK1) */
+    ROWNUM AS RNUM,
+   A.CENTER_CODE,
+		-- 배송회차
+		A.DELI_DATE,
+		-- 배송일자
+		A.DELI_ORDER,
+		A.DELI_NO,
+		-- 원천배송번호(취소대상 배송번호)
+		A.ORG_DELI_NO,
+		A.ORDER_NAME,
+		A.DELI_DETAIL_SEQ,
+		A.ORDER_CODE,
+		A.ORDER_DETAIL_SEQ,
+		-- 보관코드
+		A.DELI_SAVE_CODE,
+		A.PRODUCT_ID,
+		A.PRODUCT_NAME,
+		-- 취소예정수량
+		A.QTY,
+		A.PICK_QTY,
+		-- 취소확정수량
+		A.INSP_QTY,
+		-- 10 : 취소예정, 40 : 취소완료
+		A.STATUS,
+		A.STATUS_NM,
+		A.IMG_URL,
+		A.ORDER_ID,
+    A.CNT
+    
+,	A.DELI_METHOD
+FROM
+	(
+SELECT  
+		A.CENTER_CODE,
+		-- 배송회차
+		A.DELI_DATE,
+		-- 배송일자
+		A.DELI_ORDER,
+		A.DELI_NO,
+		-- 원천배송번호(취소대상 배송번호)
+		A.ORG_DELI_NO,
+		A.ORDER_ID,
+		A.ORDER_NAME,
+		B.DELI_DETAIL_SEQ,
+		B.ORDER_CODE,
+		B.ORDER_DETAIL_SEQ,
+		-- 보관코드
+		A.DELI_SAVE_CODE,
+		B.PRODUCT_ID,
+		C.PRODUCT_NAME,
+		-- 취소예정수량
+		B.QTY,
+		B.PICK_QTY,
+		-- 취소확정수량
+		B.INSP_QTY,
+		-- 10 : 취소예정, 40 : 취소완료
+		B.STATUS,
+		F_GET_ETCNM('OMS_STATUS', B.STATUS) AS STATUS_NM,
+		C.IMG_URL
+  , COUNT(*) OVER () CNT
+  ,	A.DELI_METHOD
+		FROM IF_TR_HEADER A, IF_TR_DETAIL B, MT_PRODUCT_V1 C
+		WHERE 1=1
+		AND A.DELI_NO = B.DELI_NO
+		AND A.CENTER_CODE = C.STORE_CODE
+		AND B.PRODUCT_ID = C.PRODUCT_CODE
+		AND A.CENTER_CODE = #{storeCode}
+		AND A.DELI_DIV = 'O09'
+		AND A.STATUS BETWEEN '01' AND '40'
+		AND A.STATUS != '99'
+		AND B.STATUS != '99'
+		<if test='deliDate != null and deliDate != ""'>
+	    <![CDATA[
+	        AND A.DELI_DATE = #{deliDate}
+	   	]]>
+	    </if>
+		<if test='status != null and status != ""'>
+	    <![CDATA[
+	        AND A.DELI_METHOD = #{status}
+	   	]]>
+	     </if>
+		ORDER BY B.STATUS, B.DELI_NO, B.DELI_DETAIL_SEQ
+
+) A
+
+	  WHERE 1=1
+	 )
+	  WHERE RNUM BETWEEN ${pageGroup} AND ${limit}
+</select>
+
+<update id="updateInspectionD" parameterType="inspection">
+     UPDATE IF_TR_DETAIL SET STATUS = #{status}, IF_CREATE_BY = #{pickerId}, IF_LAST_UPDATE_DATE = SYSDATE
+		WHERE 1=1
+		AND DELI_NO = #{deliNo}
+		AND DELI_DETAIL_SEQ = #{deliDetailSeq}
+</update>
+
+<update id="updateInspectionH" parameterType="inspection">
+     UPDATE IF_TR_HEADER SET STATUS = MIF.F_GET_DELI_HSTATUS(#{deliNo})
+      WHERE 1=1
+	  AND DELI_NO = #{deliNo}
+</update>
+
+</mapper>

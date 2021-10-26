@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mwd.picking.mapper.UserMapper">
+    <select id="selectUser" resultType="User">
+        SELECT DISTINCT USER_ID ,USER_NAME, USER_PASSWD AS PASSWORD, USER_TYPE, STORE_CODE FROM IF_SS_USER WHERE USER_ID = #{userId}
+    </select>
+</mapper>

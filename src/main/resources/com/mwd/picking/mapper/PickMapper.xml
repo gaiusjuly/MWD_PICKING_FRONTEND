@@ -1,0 +1,714 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mwd.picking.mapper.PickMapper">
+
+    <select id="selectCommCode" parameterType="hashmap" resultType="hashmap">
+	<![CDATA[
+		SELECT ETC_CODE, ETC_NAME FROM IF_MT_ETC_CODE
+			WHERE 1=1
+			AND ETC_ID = #{codeDiv}
+			AND SYSTEM_USE_FLAG = 'MWD'
+			AND USABLE_FLAG = '1'
+			ORDER BY SORT_ID
+    ]]>
+    </select>
+    
+	<select id="selectPicks" parameterType="Order" resultType="hashmap">
+	<![CDATA[
+	SELECT *
+	FROM
+	(
+	SELECT /*+ INDEX(A PK1) */
+	    ROWNUM AS RNUM
+	  , A.DELI_NO
+	       -- 배송구분
+	     , A.DELI_DIV
+	       -- 배송구분명
+	     ,A.DELI_DIV_NM
+	       -- HEADER 주문상태
+	     , A.STATUS
+	       -- HEADER 주문상태명
+	     , A.HEADER_STATUS_NM AS STATUS_NM
+	       -- 배송회차
+	     , A.DELI_ORDER
+	       -- 배송일자
+	     , A.DELI_DATE
+         -- 대표주문번호
+	     , A.ORDER_CODE
+	       -- 주문자ID
+	     , A.ORDER_ID
+	       -- 주문자명
+	     , A.ORDER_NAME
+	       -- 대표상품
+	     , A.TITLE_PRODUCT
+	       -- 상품종수
+	     , A.PRODUCT_CNT
+	       -- 주문수량
+	     , A.QTY
+	       -- 피킹수량
+	     , A.PICK_QTY
+	       -- 작업자ID
+	     , A.PICKER_ID
+	       -- 작업자명
+	     , A.PICKER_NAME
+	       -- 배송방법 (1:일반, 2:픽업(DT), 3:새벽배송)
+	     , A.DELI_METHOD
+	       -- 배송번호의 하위주문수량
+	     , A.ERP_ORDER_CNT
+	       -- 배송번호의 하위예약주문수량
+	     , A.ERP_RESERVE_ORDER_CNT
+	       -- 장만상품수량
+	     , A.JM_PRODUCT_CNT
+	       -- 정기배송여부 (Y,N), 20210416 I/F 추가예정
+--	     , A.ORDER_REGULAR_YN
+	     , CNT
+	     , A.PICK_AREA
+	   FROM
+	   (
+        SELECT  -- 배송번호
+           A.DELI_NO
+           -- 배송구분
+         , A.DELI_DIV
+           -- 배송구분명
+         , MIF.F_GET_ETCNM('OMS_DELI_DIV',A.DELI_DIV) AS DELI_DIV_NM
+           -- HEADER 주문상태
+         , A.STATUS
+           -- HEADER 주문상태명
+         , MIF.F_GET_ETCNM('OMS_STATUS',A.STATUS) AS HEADER_STATUS_NM
+         -- DETAIL 주문상태
+         --,  MAX(B.STATUS) AS STATUS
+          -- DETAIL 주문상태명
+         , MIF.F_GET_ETCNM('OMS_STATUS',MAX(B.STATUS)) AS DETAIL_STATUS_NM
+           -- 배송회차
+         , A.DELI_ORDER
+           -- 배송일자
+         , A.DELI_DATE
+           -- 대표주문번호
+         , MAX(B.ORDER_CODE) KEEP ( DENSE_RANK FIRST ORDER BY B.DELI_NO, B.DELI_DETAIL_SEQ ) AS ORDER_CODE
+           -- 주문자ID
+         , A.ORDER_ID
+           -- 주문자명
+         , A.ORDER_NAME
+           -- 대표상품
+         , MAX(C.PRODUCT_NAME) KEEP ( DENSE_RANK FIRST ORDER BY B.DELI_NO, B.DELI_DETAIL_SEQ ) AS TITLE_PRODUCT
+           -- 상품종수
+         , COUNT(DISTINCT B.PRODUCT_ID) AS PRODUCT_CNT
+           -- 주문수량
+         , SUM(B.QTY) AS QTY
+           -- 피킹수량
+         , SUM(B.PICK_QTY) AS PICK_QTY
+           -- 작업자ID
+         , D.PICKER_ID
+           -- 작업자명
+         , MIF.F_GET_USERNM(D.PICKER_ID) AS PICKER_NAME
+           -- 특이사항 항목
+           -- 배송방법 (1:일반, 2:픽업(DT), 3:새벽배송)
+         , A.DELI_METHOD
+           -- 추가 : 배송번호의 하위주문수량
+         , COUNT(DISTINCT B.ORDER_CODE) AS ERP_ORDER_CNT
+           -- 예약 : 배송번호의 하위예약주문수량
+         , COUNT(DISTINCT (CASE WHEN RESERVE_DATE IS NOT NULL THEN B.ORDER_CODE ELSE NULL END )) AS ERP_RESERVE_ORDER_CNT
+           -- 장만 : 장만상품수량
+         , COUNT(CASE WHEN B.JM_PRODUCT_YN = 'Y' THEN 1 ELSE NULL END) AS JM_PRODUCT_CNT
+           -- 정기배송여부 (Y,N), 20210416 I/F 추가예정
+         , A.ORDER_REGULAR_YN
+         , B.PICK_AREA
+         , COUNT(*) OVER () CNT
+      FROM IF_TR_HEADER A
+         , IF_TR_DETAIL B
+         LEFT OUTER JOIN DE_PK_GROUP_HEADER D ON B.GROUPKEY = D.GROUPKEY
+              AND D.STATUS <> '99'
+         , IF_MT_PRODUCT C
+      WHERE 1=1
+
+	    AND A.DELI_NO         = B.DELI_NO
+	    AND B.PRODUCT_ID      = C.PRODUCT_CODE
+	    -- 점포코드
+	    AND A.CENTER_CODE     = #{storeCode}
+	    -- 배송주문유형 : B2C 고정
+	    AND A.DELI_ORDER_TYPE = 'B2C'
+	    -- 배송피킹유형, 0 : CASE(WCS), 1 : BULK(이형)
+	    AND A.DELI_PICK_TYPE  = '0'
+	    -- DETAIL 상태, 99 : 삭제건 제외
+	    AND B.STATUS <> '99'
+	    -- HEADER 상태 : 05 : 배차완료, 10 : 피킹지시, 15 : 피킹중, 20 : 피킹완료
+	    AND A.STATUS IN ('05','10','15','20')
+	    AND A.DELI_DIV IN ('O01', 'O03')
+         ]]>
+	    <if test='pickArea != null and pickArea != ""'>
+	    <![CDATA[    
+	        AND B.PICK_AREA = #{pickArea}
+	    ]]> 
+	    </if>
+	     <if test='deliNo != null and deliNo != ""'>
+	    <![CDATA[    
+	        AND A.DELI_NO = #{deliNo}
+	    ]]> 
+	    </if>
+
+        <if test='deliDate != null and deliDate != ""'>
+            <![CDATA[
+	        AND A.DELI_DATE = #{deliDate}
+	    ]]>
+        </if>
+
+        <if test='deliDiv != null and deliDiv != ""'>
+            <![CDATA[
+	        AND A.STATUS = #{deliDiv}
+	    ]]>
+        </if>
+        <if test='deliOrder != null and deliOrder != ""'>
+            <![CDATA[
+	        AND A.DELI_ORDER = #{deliOrder}
+	    ]]>
+        </if>
+
+        <if test='orderName != null and orderName != ""'>
+            <![CDATA[
+	        AND A.ORDER_NAME = #{orderName}
+	    ]]>
+        </if>
+        <if test='pickerName != null and pickerName != ""'>
+            <![CDATA[
+	       AND A.PICKER_NAME = #{pickerName}
+	    ]]>
+        </if>
+	    
+		     GROUP BY A.DELI_NO
+               , A.DELI_DIV
+               , A.STATUS
+               , A.DELI_ORDER
+               , A.DELI_DATE
+               , A.ORDER_ID
+               , A.ORDER_NAME
+               , A.DELI_METHOD
+               , A.ORDER_REGULAR_YN
+               , D.PICKER_ID
+               , B.PICK_AREA
+      ORDER BY MAX(B.STATUS), A.DELI_DIV DESC, A.DELI_NO
+	  ) A
+
+	  WHERE 1=1
+	 )
+	  WHERE RNUM BETWEEN ${pageGroup} AND ${limit}
+	  
+    </select>
+    
+    <select id="selectOrderDetailProduct" resultType="hashmap">
+          SELECT
+        M.PRODUCT_CODE,
+        M.PRODUCT_NAME,
+        B.QTY,
+        '' AS PICKING_QTY,
+        B.SALE_MONEY -  (B.MP_MONEY + B.CARD_MONEY + B.FREE_MONEY + B.MORE_MONEY + B.TIME_MONEY + B.SPOT_MONEY + B.COUPLE_MONEY + B.PARTNER_MONEY) SALE_MONEY,
+        DECODE(B.MP_MONEY,0,'','MP쿠폰 ' || B.MP_MONEY) PR_MP_DESC,
+        DECODE(B.CARD_MONEY,0,'','카드쿠폰 ' || B.CARD_MONEY) PR_CARD_DESC,
+        DECODE(B.FREE_MONEY,0,'','무료쿠폰 ' || B.FREE_MONEY) PR_FREE_DESC,
+        DECODE(B.MORE_MONEY,0,'','다다익선 ' || B.MORE_MONEY) PR_MORE_DESC,
+        DECODE(B.TIME_MONEY,0,'','타임쿠폰 ' || B.TIME_MONEY) PR_TIME_DESC,
+        DECODE(B.SPOT_MONEY,0,'','스팟쿠폰 ' || B.SPOT_MONEY) PR_SPOT_DESC,
+        DECODE(B.COUPLE_MONEY,0,'','커플쿠폰 ' || B.COUPLE_MONEY) PR_COUPLE_DESC,
+        DECODE(B.PARTNER_MONEY,0,'','연계쿠폰 ' || B.PARTNER_MONEY) PR_PARTNER_DESC,
+        P.PICKING_ZONE
+     FROM OMS.SA_TR_DETAIL@ECODEV B, OMS.MT_PRODUCT@ECODEV M ,
+--       FROM SA_TR_DETAIL B, MT_PRODUCT M ,
+        (
+        SELECT S_CLASS_CODE CLASS_CODE, NVL(P2.CORNER_NAME,'미정') PICKING_ZONE
+         FROM OMS.MT_CLASS_PICK_ORDER_MNG@ECODEV  P1, OMS.MT_PICK_CORNER_MNG@ECODEV P2
+--           FROM OMS.MT_CLASS_PICK_ORDER_MNG@ECODEV  P1, OMS.MT_PICK_CORNER_MNG@ECODEV P2
+        WHERE P1.STORE_CODE = P2.STORE_CODE (+)
+          AND P1.CORNER_NO = P2.CORNER_NO(+)
+          AND P1.STORE_CODE = #{storeCode}
+        ) P
+    WHERE B.ORDER_CODE = #{orderCode}
+      AND B.PRODUCT_ID = M.PRODUCT_CODE
+      AND SUBSTR(M.CLASS_CODE,1,6) = P.CLASS_CODE(+)
+</select>
+
+<select id="selectOrderDetailOwner" resultType="OrderOwner">
+SELECT
+            ORDER_NAME, --주문자정보(성명)
+            ORDER_HP, --주문자정보(휴대전화)
+            ORDER_EMAIL, --주문자정보(이메일)
+            RECE_NAME, --배송정보(성명)
+            RECE_HP, --배송정보(휴대전화)
+            RECE_ADDR1 || RECE_ADDR2 RECE_ADDR , --배송정보(주소)
+            PAYMENT_TYPE, OMS.F_ETC_NAME@ECODEV('PAYMENT_TYPE',PAYMENT_TYPE) PAYMENT_TYPE_NAME, -- 결제정보
+            REPLACE_CODE, OMS.F_ETC_NAME@ECODEV('ORDER_REPLACE_FLAG',REPLACE_CODE) REPLACE_CODE_NAME, --환불정보
+            ORDER_MESSAGE, -- 배송 요청사항
+            REPLACE_MESSAGE, -- 기타 품절 요청사항
+            ORDER_MONEY, -- 상품금액
+            (ORDER_MP_COUPON_MONEY + ORDER_CARD_COUPON_MONEY + ORDER_FREE_COUPON_MONEY + ORDER_MORE_COUPON_MONEY + ORDER_TIME_COUPON_MONEY + ORDER_SPOT_COUPON_MONEY + ORDER_COUPLE_COUPON_MONEY + ORDER_PARTNER_COUPON_MONEY) AS COUPON_MONEY, -- 상품할인금액
+            ORDER_DELI_MONEY + ORDER_DELI_MONEY_PRD ORDER_DELI_MONEY, --배송비
+            CART_DISCOUNT +  DELI_DISCOUNT + ORDER_POINT_MONEY + ORDER_GIFT_CARD_MONEY + NVL(ORDER_MGIFT_CARD_MONEY,0) + ORDER_MILEAGE_MONEY AS ETC_PAY_MONEY, --쿠폰 및 기타결제
+            ORDER_TOT_MONEY -- 총 결제금액
+   FROM OMS.SA_TR_HEADER@ECODEV
+--    FROM SA_TR_HEADER
+    WHERE ORDER_CODE = #{orderCode}
+</select>
+    
+<insert id="insertMemo" parameterType="hashmap">
+ <![CDATA[
+     INSERT INTO DE_PK_MEMO
+          (DELI_NO, SORT_NO, CENTER_CODE, STATUS,MEMO, CREATE_DATE, CREATE_BY, LAST_UPDATE_DATE, LAST_UPDATE_BY)
+     VALUES (#{deliNo}, (SELECT NVL(MAX(SORT_NO),0)+1 FROM DE_PK_MEMO WHERE DELI_NO=#{deliNo} ), #{storeCode}, #{status}, #{memo}, sysdate, #{userId}, sysdate, #{userId} )     
+ ]]>
+</insert>
+
+<select id="selectMemo" resultType="hashmap">
+    SELECT MEMO, CREATE_BY, CREATE_DATE FROM DE_PK_MEMO WHERE DELI_NO = #{deliNo} 
+</select>    
+
+<select id="selectTotList" resultType="Tot">
+<![CDATA[
+	WITH DELI AS (
+		SELECT  A.DELI_NO
+                ,B.MASTER_CART_CODE
+                   , A.ORDER_NAME
+		           , A.STATUS
+		           , MAX(B.ORDER_CODE) KEEP ( DENSE_RANK FIRST ORDER BY B.DELI_NO, B.DELI_DETAIL_SEQ ) AS ORDER_CODE
+		           , SUM(B.QTY) AS QTY
+		           , SUM(B.PICK_QTY) AS PICK_QTY
+		           , B.MASTER_TOTE_AREA AS TOTE_AREA
+		           , B.PICK_AREA
+		      FROM IF_TR_HEADER A, IF_TR_DETAIL B
+		      WHERE 1=1
+		        AND A.DELI_NO = B.DELI_NO
+		        AND A.CENTER_CODE     = #{storeCode}
+		        AND A.DELI_ORDER_TYPE = 'B2C'
+		        AND A.DELI_PICK_TYPE  = '0'
+		        AND B.STATUS <> '99'
+		        AND A.STATUS BETWEEN '05' AND '20'
+		        AND B.PICK_AREA = #{pickArea}
+		        AND A.DELI_NO IN (
+		            SELECT B.DELI_NO FROM MIF.DE_PK_GROUP_HEADER A, MIF.DE_PK_GROUP_DETAIL B
+		            WHERE 1=1
+		            AND A.GROUPKEY = B.GROUPKEY
+		            AND A.GROUPKEY = #{groupkey}
+		        )
+		        GROUP BY A.DELI_NO, B.PICK_AREA, A.ORDER_NAME, A.STATUS, B.MASTER_CART_CODE, B.MASTER_TOTE_AREA
+		)
+		SELECT
+		DELI.DELI_NO,  -- 배송번호
+		DELI.PICK_AREA,
+		
+		DELI.ORDER_NAME, -- 주문자명
+		DELI.ORDER_CODE, -- 주문번호
+		DELI.QTY,  -- 주문총수량
+		DELI.PICK_QTY,  -- 피킹총수량
+		DELI.STATUS,    -- HEADER 상태
+		DELI.TOTE_AREA,
+		
+    DELI.MASTER_CART_CODE AS CART_CODE,
+		COUNT(DISTINCT PICK.CART_CODE) AS CART_CNT -- 주문별 토트박스갯수
+		FROM DELI LEFT OUTER JOIN IF_TR_PICK PICK ON DELI.DELI_NO = PICK.DELI_NO
+		                                                                     AND DELI.PICK_AREA = PICK.PICK_AREA
+		                                                                     AND PICK.STATUS <> '99'
+		WHERE 1=1
+		GROUP BY DELI.DELI_NO, DELI.PICK_AREA, DELI.ORDER_NAME, DELI.ORDER_CODE, DELI.QTY, DELI.PICK_QTY, DELI.STATUS, DELI.TOTE_AREA, PICK.TOTE_AREA ,DELI.MASTER_CART_CODE
+		ORDER BY PICK.TOTE_AREA, DELI.DELI_NO
+]]>
+</select>    
+
+<select id="selectHasAssignTot" resultType="string">
+<![CDATA[
+	SELECT COUNT(*) CNT FROM IF_TR_HEADER A, IF_TR_DETAIL B
+	WHERE 1=1
+	AND A.DELI_NO = B.DELI_NO
+	AND (A.DELI_NO, B.GROUPKEY) IN (
+	SELECT B.DELI_NO, A.GROUPKEY FROM DE_PK_GROUP_HEADER A, DE_PK_GROUP_DETAIL B
+	WHERE 1=1
+	AND A.GROUPKEY = B.GROUPKEY
+	AND A.GROUPKEY = #{groupkey})
+	AND A.STATUS <> '99'
+	AND B.STATUS <> '99'
+	]]>
+	AND B.MASTER_CART_CODE = #{cartcode}
+</select>
+
+
+<select id="selecAssignDeliveryinfo" resultType="hashmap">
+<![CDATA[
+		SELECT DELI_NO, NEXT_MASTER_TOTE_AREA FROM (
+			(SELECT DELI_NO, MASTER_CART_CODE, MASTER_TOTE_AREA, MAX(MASTER_TOTE_AREA) OVER () + 1 AS NEXT_MASTER_TOTE_AREA FROM IF_TR_DETAIL
+			WHERE 1=1
+			AND (GROUPKEY, DELI_NO) IN (
+			SELECT A.GROUPKEY, B.DELI_NO FROM DE_PK_GROUP_HEADER A, DE_PK_GROUP_DETAIL B
+			WHERE 1=1
+			AND A.GROUPKEY = B.GROUPKEY
+			AND A.GROUPKEY = #{groupkey} )
+			AND STATUS = '10'
+			GROUP BY DELI_NO, MASTER_CART_CODE, MASTER_TOTE_AREA
+			ORDER BY DELI_NO))
+			WHERE 1=1
+			AND MASTER_CART_CODE IS NULL
+			AND ROWNUM = 1
+	]]>
+	
+</select>
+	
+<update id="updateMasterTrDetail" parameterType="hashmap">
+ <![CDATA[
+     UPDATE IF_TR_DETAIL SET MASTER_CART_CODE = #{cartcode}, MASTER_TOTE_AREA = #{nextMasterToteArea}, CURRENT_CART_CODE = #{cartcode}
+		WHERE 1=1
+		AND DELI_NO = #{deliNo}
+		AND GROUPKEY = #{groupkey}
+
+ ]]>
+</update>
+
+<update id="deleteMasterTrDetail" parameterType="hashmap">
+     UPDATE IF_TR_DETAIL SET MASTER_CART_CODE = '',  CURRENT_CART_CODE = '', MASTER_TOTE_AREA = 0
+		WHERE 1=1
+		AND DELI_NO = #{deliNo}
+		AND GROUPKEY = #{groupkey}
+
+</update>
+
+<update id="updateMoveStatusProductScan" parameterType="Tot">
+     UPDATE MIF.DE_PK_GROUP_HEADER 
+       SET STATUS = '12'
+	   WHERE 1=1 
+	   AND GROUPKEY = #{groupkey}
+	   AND PICK_AREA = #{pickArea}
+	   AND CENTER_CODE = #{storeCode}
+	   AND PICKER_ID = #{pickerId}
+
+</update>
+
+<select id="selectGoods" resultType="hashmap">
+<![CDATA[
+	   SELECT
+		COUNT(*) OVER () AS TOTAL_CNT,
+		SUM(B.PICK_QTY) AS PICK_QTY,
+		ROW_NUMBER() OVER (ORDER BY B.PICK_SORT, B.PRODUCT_ID) AS SORT_NO,
+		B.PRODUCT_ID,
+		--상품명
+		C.PRODUCT_NAME,
+		--주문수량
+		SUM(B.QTY) AS QTY,
+		--지시수량
+		SUM(B.ALLC_QTY) AS ALLC_QTY,
+		--피킹수량
+		SUM(B.PICK_QTY) AS PICK_QTY,
+		--재고
+		NVL((SELECT SUM(CURRENT_STOCK_QTY) FROM OMS.IV_CURRENT@ECODEV
+		WHERE 1=1
+		AND STORE_CODE = A.CENTER_CODE
+		AND PRODUCT_CODE = B.PRODUCT_ID),0) AS STOCK_QTY,
+		--상태
+		MIN(B.STATUS) AS STATUS,
+		--상품위치
+		'' AS PRODUCT_AREA,
+		--행사정보
+		'' AS EVENT_INFO,
+		'' AS SALE_STATUS,
+		C.IMG_URL AS IMG_URL
+		FROM IF_TR_HEADER A, IF_TR_DETAIL B, MIF.MT_PRODUCT_V1 C
+		WHERE 1=1
+		AND A.DELI_NO = B.DELI_NO
+		AND B.PRODUCT_ID = C.PRODUCT_CODE
+		AND A.CENTER_CODE     = #{storeCode}
+		AND A.DELI_ORDER_TYPE = 'B2C'
+		AND A.DELI_PICK_TYPE  = '0'
+		-- 10 : 피킹지시, 12 피킹중, 15 피킹완료, 20 BCR 스캔
+		AND A.STATUS BETWEEN '10' AND '20'
+		AND B.STATUS <> '99'
+		
+		AND (A.DELI_NO, B.GROUPKEY) IN (
+		    SELECT B.DELI_NO, A.GROUPKEY FROM MIF.DE_PK_GROUP_HEADER A, MIF.DE_PK_GROUP_DETAIL B
+		    WHERE 1=1
+		    AND A.GROUPKEY = B.GROUPKEY
+		    AND A.GROUPKEY = #{groupkey}
+		)
+		GROUP BY A.CENTER_CODE, B.PRODUCT_ID, C.PRODUCT_NAME, B.PICK_SORT, C.IMG_URL
+		ORDER BY B.PICK_SORT, B.PRODUCT_ID
+]]>
+	
+</select>
+
+<select id="selectGoodDetailList" resultType="hashmap">
+		WITH ODER AS (
+			-- 상품 토탈, 장만 제외, 대체 상품 제외
+			SELECT
+			'1' AS SORT_NO,
+			A.CENTER_CODE, NULL AS DELI_NO,  NULL AS DELI_DETAIL_SEQ,  B.PRODUCT_ID, C.PRODUCT_NAME, NULL AS ORG_PRODUCT_ID,
+			SUM(B.QTY) AS QTY, SUM(B.ALLC_QTY) AS ALLC_QTY, SUM(B.PICK_QTY) AS PICK_QTY,
+			C.CURRENT_STOCK_QTY, MIN(B.STATUS) AS STATUS, '' AS PRODUCT_AREA, C.PROMOTION,
+			C.SALE_PRICE, C.IMG_URL, B.JM_PRODUCT_YN, B.PICK_SORT, NULL AS JM_PRODUCT_MESSAGE, C.SALE_FLAG,
+			NULL AS REPLACE_CODE
+			FROM IF_TR_HEADER A, IF_TR_DETAIL B, MIF.MT_PRODUCT_V1 C
+			WHERE 1=1
+			AND A.DELI_NO = B.DELI_NO
+			AND A.CENTER_CODE = C.STORE_CODE
+			AND B.PRODUCT_ID = C.PRODUCT_CODE
+			AND A.CENTER_CODE = #{storeCode}
+			AND A.DELI_ORDER_TYPE = 'B2C'
+			AND A.DELI_PICK_TYPE  = '0'
+			AND B.STATUS BETWEEN '10' AND '20'
+			AND A.STATUS != '99'
+			AND B.JM_PRODUCT_YN = 'N'
+			AND B.ORG_PRODUCT_ID IS NULL
+			AND (A.DELI_NO, B.GROUPKEY) IN (
+			    SELECT B.DELI_NO, A.GROUPKEY FROM MIF.DE_PK_GROUP_HEADER A, MIF.DE_PK_GROUP_DETAIL B
+			    WHERE 1=1
+			    AND A.GROUPKEY = B.GROUPKEY
+			    AND A.GROUPKEY = #{groupkey}
+			)
+			GROUP BY A.CENTER_CODE, B.PRODUCT_ID, C.PRODUCT_NAME, C.CURRENT_STOCK_QTY, C.PROMOTION, C.SALE_PRICE, C.IMG_URL, B.JM_PRODUCT_YN, B.PICK_SORT, C.SALE_FLAG
+			UNION ALL
+			-- 장만 상품, 대체 상품 제외
+			SELECT
+			'2' AS SORT_NO,
+			 A.CENTER_CODE, A.DELI_NO,  B.DELI_DETAIL_SEQ,  B.PRODUCT_ID, C.PRODUCT_NAME,  NULL AS ORG_PRODUCT_ID,
+			B.QTY, B.ALLC_QTY, B.PICK_QTY,
+			C.CURRENT_STOCK_QTY, B.STATUS, '' AS PRODUCT_AREA, C.PROMOTION,
+			C.SALE_PRICE, C.IMG_URL, B.JM_PRODUCT_YN, B.PICK_SORT, B.JM_PRODUCT_MESSAGE, C.SALE_FLAG,
+			B.REPLACE_CODE
+			FROM IF_TR_HEADER A, IF_TR_DETAIL B, MIF.MT_PRODUCT_V1 C
+			WHERE 1=1
+			AND A.DELI_NO = B.DELI_NO
+			AND A.CENTER_CODE = C.STORE_CODE
+			AND B.PRODUCT_ID = C.PRODUCT_CODE
+			AND A.CENTER_CODE = #{storeCode}
+			AND A.DELI_ORDER_TYPE = 'B2C'
+			AND A.DELI_PICK_TYPE  = '0'
+			AND B.STATUS BETWEEN '10' AND '20'
+			AND A.STATUS != '99'
+			AND B.JM_PRODUCT_YN = 'Y'
+			AND B.ORG_PRODUCT_ID IS NULL
+			AND (A.DELI_NO, B.GROUPKEY) IN (
+			    SELECT B.DELI_NO, A.GROUPKEY FROM MIF.DE_PK_GROUP_HEADER A, MIF.DE_PK_GROUP_DETAIL B
+			    WHERE 1=1
+			    AND A.GROUPKEY = B.GROUPKEY
+			    AND A.GROUPKEY = #{groupkey}
+			)
+			UNION ALL
+			-- 대체 상품
+			SELECT
+			'3' AS SORT_NO,
+			 A.CENTER_CODE, A.DELI_NO,  B.DELI_DETAIL_SEQ,  B.PRODUCT_ID, C.PRODUCT_NAME, B.ORG_PRODUCT_ID,
+			B.QTY, B.ALLC_QTY, B.PICK_QTY,
+			C.CURRENT_STOCK_QTY, B.STATUS, '' AS PRODUCT_AREA, C.PROMOTION,
+			C.SALE_PRICE, C.IMG_URL, B.JM_PRODUCT_YN, B.PICK_SORT, B.JM_PRODUCT_MESSAGE, C.SALE_FLAG,
+			B.REPLACE_CODE
+			FROM IF_TR_HEADER A, IF_TR_DETAIL B, MIF.MT_PRODUCT_V1 C
+			WHERE 1=1
+			AND A.DELI_NO = B.DELI_NO
+			AND A.CENTER_CODE = C.STORE_CODE
+			AND B.PRODUCT_ID = C.PRODUCT_CODE
+			AND A.CENTER_CODE = #{storeCode}
+			AND A.DELI_ORDER_TYPE = 'B2C'
+			AND A.DELI_PICK_TYPE  = '0'
+			AND B.STATUS BETWEEN '10' AND '20'
+			AND A.STATUS != '99'
+			AND B.ORG_PRODUCT_ID IS NOT NULL
+			AND (A.DELI_NO, B.GROUPKEY) IN (
+			    SELECT B.DELI_NO, A.GROUPKEY FROM MIF.DE_PK_GROUP_HEADER A, MIF.DE_PK_GROUP_DETAIL B
+			    WHERE 1=1
+			    AND A.GROUPKEY = B.GROUPKEY
+			    AND A.GROUPKEY = #{groupkey}
+			) )
+			SELECT * FROM (
+			SELECT COUNT(*) OVER () AS TOTAL_CNT, 
+			ROW_NUMBER() OVER (ORDER BY ODER.SORT_NO, ODER.PICK_SORT, ODER.DELI_NO, ODER.DELI_DETAIL_SEQ) AS SORT_NO, 
+			ODER.CENTER_CODE, ODER.DELI_NO,  ODER.DELI_DETAIL_SEQ,  ODER.PRODUCT_ID, ODER.PRODUCT_NAME, ODER.ORG_PRODUCT_ID, MIF.F_GET_PRODUCTNM(ODER.ORG_PRODUCT_ID) AS ORG_PRODUCT_NM,
+			ODER.QTY, ODER.ALLC_QTY, ODER.PICK_QTY,
+			ODER.CURRENT_STOCK_QTY, ODER.STATUS, ODER.PRODUCT_AREA, ODER.PROMOTION,
+			ODER.SALE_PRICE, ODER.IMG_URL, ODER.JM_PRODUCT_YN, ODER.PICK_SORT, JM_PRODUCT_MESSAGE, 
+			MIF.F_GET_ETCNM('OMS_SALE_FLAG', ODER.SALE_FLAG) AS SALE_FLAG,
+			F_GET_ETCNM('OMS_STATUS', ODER.STATUS) AS STATUSNM,
+			ODER.REPLACE_CODE,
+			MIF.F_GET_ETCNM('ORDER_REPLACE_FLAG',ODER.REPLACE_CODE) AS REPLACE_NAME
+			FROM ODER
+			WHERE 1=1
+			<if test='productid != null and productid != "x"'>
+		    <![CDATA[
+              AND PRODUCT_ID = F_GET_SOURCE(#{productid})
+            ]]>    
+	        </if>
+	      
+	       <if test='sortno != null and sortno != "x"'>
+			<![CDATA[
+	            AND PICK_SORT =  #{sortno}
+	            ]]>  
+	        </if>
+			ORDER BY ODER.SORT_NO, ODER.PICK_SORT, ODER.DELI_NO, ODER.DELI_DETAIL_SEQ
+			)
+		
+</select>
+
+<select id="selectGoodTotList" resultType="hashmap">
+<![CDATA[
+		WITH DELI AS (
+	SELECT  A.DELI_NO
+	           , MAX(B.ORDER_CODE) KEEP ( DENSE_RANK FIRST ORDER BY B.DELI_NO, B.DELI_DETAIL_SEQ ) AS ORDER_CODE
+	           , A.ORDER_NAME
+	           , B.PICK_AREA
+	           , B.MASTER_CART_CODE
+	           , B.CURRENT_CART_CODE
+	           , B.MASTER_TOTE_AREA
+	        --   , A.STATUS
+	        ,(SELECT MAX(STATUS) FROM IF_TR_DETAIL WHERE DELI_NO = A.DELI_NO  AND STATUS <20 ) STATUS
+	           
+		-- 배송번호 없이 조회(일반상품), 상품코드, 피킹지시, 피킹중
+]]>		
+		<if test='delino == ""'>
+		<![CDATA[
+	           , MIN( CASE WHEN B.PRODUCT_ID = #{productid} AND B.STATUS IN ('10','12','15') THEN B.DELI_DETAIL_SEQ ELSE NULL END) AS DELI_DETAIL_SEQ
+	           , SUM( CASE WHEN B.PRODUCT_ID = #{productid} AND B.STATUS IN ('10','12','15') THEN B.QTY ELSE 0 END ) AS QTY 
+	           , SUM( CASE WHEN B.PRODUCT_ID = #{productid} AND B.STATUS IN ('10','12','15') THEN B.ALLC_QTY ELSE 0 END ) AS ALLC_QTY
+	           , SUM( CASE WHEN B.PRODUCT_ID = #{productid} AND B.STATUS IN ('10','12','15') THEN B.PICK_QTY ELSE 0 END ) AS PICK_QTY
+	           , SUM( CASE WHEN B.PRODUCT_ID = #{productid} AND B.STATUS IN ('10','12','15') THEN 1 ELSE 0 END ) AS PRODUCT_CNT
+	           , MIN( CASE WHEN B.PRODUCT_ID = '02840840' AND B.STATUS IN ('10','12','15') THEN B.ORDER_CODE ELSE NULL END) AS CUR_ORDER_CODE
+               , MIN( CASE WHEN B.PRODUCT_ID = '02840840' AND B.STATUS IN ('10','12','15') THEN B.ORDER_DETAIL_SEQ ELSE NULL END) AS CUR_ORDER_DETAIL_SEQ
+	     ]]>  
+        </if>      
+        <if test='delino != ""'>
+        <![CDATA[ 
+	           -- 배송번호 있을때 (장만상품), 배송번호, 상세번호, 피킹지시, 피킹중 상태만 대상
+	           , MIN( CASE WHEN A.DELI_NO = #{delino} AND B.DELI_DETAIL_SEQ = #{deliseq} AND B.STATUS IN ('10','12','15') THEN B.DELI_DETAIL_SEQ ELSE NULL END) AS DELI_DETAIL_SEQ
+	           , SUM( CASE WHEN A.DELI_NO = #{delino} AND B.DELI_DETAIL_SEQ = #{deliseq} AND B.STATUS IN ('10','12','15') THEN B.QTY ELSE 0 END ) AS QTY 
+	           , SUM( CASE WHEN A.DELI_NO = #{delino} AND B.DELI_DETAIL_SEQ = #{deliseq} AND B.STATUS IN ('10','12','15') THEN B.ALLC_QTY ELSE 0 END ) AS ALLC_QTY
+	           , SUM( CASE WHEN A.DELI_NO = #{delino} AND B.DELI_DETAIL_SEQ = #{deliseq} AND B.STATUS IN ('10','12','15') THEN B.PICK_QTY ELSE 0 END ) AS PICK_QTY
+	           , SUM( CASE WHEN A.DELI_NO = #{delino} AND B.DELI_DETAIL_SEQ = #{deliseq} AND B.STATUS IN ('10','12','15') THEN 1 ELSE 0 END ) AS PRODUCT_CNT
+	           , MIN( CASE WHEN B.PRODUCT_ID = '02840840' AND B.STATUS IN ('10','12','15') THEN B.ORDER_CODE ELSE NULL END) AS CUR_ORDER_CODE
+               , MIN( CASE WHEN B.PRODUCT_ID = '02840840' AND B.STATUS IN ('10','12','15') THEN B.ORDER_DETAIL_SEQ ELSE NULL END) AS CUR_ORDER_DETAIL_SEQ
+	    ]]>  
+        </if>       
+	           <!-- , B.REPLACE_CODE
+	           , MIF.F_GET_ETCNM('ORDER_REPLACE_FLAG',B.REPLACE_CODE) AS REPLACE_NAME -->
+	           , B.GROUPKEY
+	      FROM IF_TR_HEADER A, IF_TR_DETAIL B
+	      WHERE 1=1
+	        AND A.DELI_NO = B.DELI_NO
+	        AND A.CENTER_CODE     = #{storeCode}
+	        AND A.DELI_ORDER_TYPE = 'B2C'
+	        AND A.DELI_PICK_TYPE  = '0'
+	        AND B.STATUS != '99'
+	        AND A.STATUS BETWEEN '05' AND '20'
+	        AND (A.DELI_NO, B.GROUPKEY) IN (
+	            SELECT B.DELI_NO, A.GROUPKEY FROM MIF.DE_PK_GROUP_HEADER A, MIF.DE_PK_GROUP_DETAIL B
+	            WHERE 1=1
+	            AND A.GROUPKEY = B.GROUPKEY
+	            AND A.GROUPKEY = #{groupkey}
+	        )
+	        GROUP BY A.DELI_NO, B.PICK_AREA, B.MASTER_CART_CODE, B.MASTER_TOTE_AREA , A.STATUS, A.ORDER_NAME, B.GROUPKEY, B.CURRENT_CART_CODE
+	)
+	SELECT
+	DELI.DELI_NO,  -- 배송번호
+	DELI.DELI_DETAIL_SEQ, -- 배송상세번호
+	DELI.PICK_AREA,
+	DELI.ORDER_CODE, -- 주문번호
+	DELI.ORDER_NAME, -- 주문자
+	SUBSTR(DELI.CUR_ORDER_DETAIL_SEQ,0,1) ORDER_CODE_SEQ,
+    DELI.CUR_ORDER_DETAIL_SEQ ORDER_CODE_SEQ,
+	DELI.QTY,
+	DELI.ALLC_QTY,  -- 지시총수량
+	DELI.PICK_QTY,  -- 피킹총수량
+	DELI.MASTER_CART_CODE, -- 토트박스
+    DELI.CURRENT_CART_CODE,
+	DELI.MASTER_TOTE_AREA,  -- 토트구역명
+	DELI.PRODUCT_CNT, -- 피킹대상품목
+	DELI.STATUS,
+	<!-- DELI.REPLACE_CODE,
+	DELI.REPLACE_NAME,  -->
+	DELI.GROUPKEY -- 그룹번호
+	,(SELECT ORG_PRODUCT_ID FROM IF_TR_DETAIL WHERE DELI_NO=DELI.DELI_NO AND DELI_DETAIL_SEQ=DELI.DELI_DETAIL_SEQ) ORG_PRODUCT_ID
+	FROM DELI
+	ORDER BY MASTER_TOTE_AREA
+	
+</select>
+
+<select id="selectCheckupGood" resultType="string">
+  SELECT MIF.F_GET_SOURCE(#{productId}) FROM DUAL
+</select>
+
+<select id="selectassigntotelist" parameterType="Tot" resultType="Tot">
+	SELECT DISTINCT DELI_NO, DELI_DETAIL_SEQ, CART_CODE, TOTE_AREA
+		FROM IF_TR_PICK
+		WHERE DELI_NO IN (${deliNos})
+		AND PICK_AREA=#{pickArea}
+		AND STATUS IN ('12', '15')
+	    AND TOTE_TYPE = 'C'
+	<!-- ORDER BY DELI_PICK_SEQ ASC -->
+</select>
+
+<select id="selectBcrCheck" parameterType="Pick" resultType="string">
+	SELECT COUNT(*) CNT FROM IF_TR_DETAIL A, IF_TR_PICK B
+		WHERE 1=1
+		AND A.DELI_NO = B.DELI_NO
+		AND A.DELI_DETAIL_SEQ = B.DELI_DETAIL_SEQ
+		AND A.STATUS != '99'
+		AND B.STATUS = '20'
+		AND A.MASTER_CART_CODE IN (${masterCartCode})
+		AND (A.DELI_NO, A.GROUPKEY) IN (
+		SELECT B.DELI_NO, A.GROUPKEY FROM MIF.DE_PK_GROUP_HEADER A, MIF.DE_PK_GROUP_DETAIL B
+		WHERE 1=1
+		AND A.GROUPKEY = B.GROUPKEY
+		AND A.GROUPKEY = #{groupkey}
+		)
+</select>
+
+<select id="selectProductInfo2" parameterType="Product" resultType="Product">
+		SELECT PRODUCT_ID, PRO_NAME, ORG_SALE_PRICE, SALE_PRICE, IMG_URL FROM MIF.FT_GET_PRODUCT_PRICE (#{storeCode},#{orderCode},#{productId} )
+</select>
+
+<select id="selectProductInfo1" parameterType="Product" resultType="Product">
+	SELECT '06908508' PRODUCT_ID ,'CJ 백설 중력 밀가루' PRO_NAME ,'2000' ORG_SALE_PRICE ,
+  '2000'  SALE_PRICE, 'http://gdimg.gmarket.co.kr/2065831461/still/280?ver=1615995709' IMG_URL FROM DUAL
+</select>
+
+<select id="selectProductInfo" parameterType="Product" resultType="hashmap">
+		SELECT
+		PRODUCT_ID,
+		PRICE_EDIT_ABLE_YN,
+		REPLACE_ABLE_YN,
+		PRO_GAGE,
+		GROUP_CODE,
+		PRO_NAME,
+		--단가
+		ORG_SALE_PRICE AS SALE_PRICE,
+		--행사금액
+		HALIN_TOT_MONEY,
+		--최종단가
+		SALE_PRICE AS ORDER_PRICE,
+		DISCOUNT_PRODUCT_PRICE,
+		MP_PRICE,
+		FREE_PRICE,
+		CARD_PRICE,
+		MORE,
+		EXTRA,
+		IMG_URL,
+		CLASS_CODE,
+		PACK_METHOD_FLAG
+	FROM MIF.FT_GET_PRODUCT_PRICE (#{storeCode},#{orderCode},#{productId})
+</select>
+
+<select id="selectProductInfoTarget" parameterType="Product" resultType="hashmap">
+	SELECT
+	A.ORDER_CODE, A.ORDER_DETAIL_SEQ, A.STORE_CODE,
+	A.PRODUCT_ID, A.CARD_PRICE,
+	A.MP_PRICE,
+	A.MORE_PRICE,
+	A.TIME_PRICE,
+	A.SPOT_PRICE,
+	--단가
+	A.SALE_PRICE,
+	--행사금액
+	( NVL (A.CARD_PRICE, 0) + NVL (A.MP_PRICE, 0) + NVL (A.FREE_PRICE, 0) + NVL (A.MORE_PRICE, 0) + NVL (A.TIME_PRICE, 0) + NVL (A.SPOT_PRICE, 0)) AS HALIN_TOT_MONEY,
+	--최종금액
+	A.SALE_PRICE - (  NVL (A.CARD_PRICE, 0) + NVL (A.MP_PRICE, 0) + NVL (A.FREE_PRICE, 0) + NVL (A.MORE_PRICE, 0) + NVL (A.TIME_PRICE, 0) + NVL (A.SPOT_PRICE, 0)) AS ORDER_PRICE,
+	B.IMG_URL
+	FROM SA_TR_DETAIL_V1 A, MT_PRODUCT_V1 B
+	WHERE 1=1
+	AND A.STORE_CODE = B.STORE_CODE
+	AND A.PRODUCT_ID = B.PRODUCT_CODE
+	AND A.ORDER_CODE = #{orderCode}
+	AND A.ORDER_DETAIL_SEQ = #{orderDetailSeq}
+</select>
+
+</mapper>

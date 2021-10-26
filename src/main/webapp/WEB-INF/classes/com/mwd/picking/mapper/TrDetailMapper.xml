@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mwd.picking.mapper.TrDetailMapper">
+	<select id="selectTrDetail" parameterType="TrDetail" resultType="TrDetail">
+	SELECT DELI_NO
+				, DELI_DETAIL_SEQ
+				, ORDER_CODE
+				, ORDER_DETAIL_SEQ
+				, STATUS
+				, ORDER_CNCL_TYPE
+				, PICK_AREA
+				, PICK_SORT
+				, VARIANT_FLAG
+				, PACK_METHOD_FLAG
+				, JM_PRODUCT_YN
+				, JM_PRODUCT_MESSAGE
+				, JM_FLAG
+				
+				, REPLACE_CODE
+				, REPLACE_MESSAGE
+
+				, PRODUCT_ID
+				, ORG_PRODUCT_ID
+				, QTY
+				, ALLC_QTY
+				, PICK_QTY
+				, INSP_QTY
+				, SALE_MONEY
+				, CLASS_CODE
+				, GROUP_CODE
+				, WEIGHT
+				, CBM
+				, ORDER_DATE
+				, DELI_ORDER
+				, ORDER_WANTED_DELI_DATE
+				, RESERVE_DATE
+				, RESERVE_DELI_ORDER
+				, GROUPKEY
+				, MASTER_TOTE_AREA
+				, IF_CREATE_DATE
+				, IF_CREATE_BY
+				, IF_LAST_UPDATE_DATE
+				, IF_LAST_UPDATE_BY
+				, IF_WCS_TRSTAT
+				, IF_WCS_DATE FROM IF_TR_DETAIL WHERE DELI_NO = #{deliNo} AND DELI_DETAIL_SEQ=#{deliDetailSeq}
+
+	</select>
+
+	<select id="selectTrHeader" parameterType="TrHeader" resultType="TrHeader">
+		SELECT  DELI_NO
+		,ORG_DELI_NO
+		,DELI_ORDER
+		,DELI_DATE
+		,DELI_START_TIME
+		,DELI_END_TIME
+		,CENTER_CODE
+		,DELI_METHOD
+		,DELI_ORDER_TYPE
+		,DELI_PICK_TYPE
+		,DELI_DIV
+		,STATUS
+		,ERP_ORDER_CNT
+		,ERP_RESERVE_ORDER_CNT
+		,MEMBER_CODE
+		,ORDER_ID
+		,ORDER_NAME
+		,ORDER_EMAIL
+		,ORDER_HP
+		,RECE_NAME
+		,RECE_ZIPCODE
+		,RECE_ADDR1
+		,RECE_ADDR2
+		,RECE_TEL
+		,RECE_HP
+		,CAR_ID
+		,CAR_NUMBER
+		,DELI_ID
+		,DELI_NAME
+		,DELI_ORDER_SORT
+		,DELI_TYPE
+		,DELI_SAVE_CODE
+		,ORDER_REGULAR_YN
+		,ERP_CREATE_DATE
+		,ERP_CREATE_BY
+		,IF_CREATE_DATE
+		,IF_CREATE_BY
+		,IF_LAST_UPDATE_DATE
+		,IF_LAST_UPDATE_BY
+		,IF_TMS_TRSTAT
+		,IF_TMS_DATE
+		,IF_WCS_DATE FROM IF_TR_HEADER WHERE DELI_NO=#{deliNo}
+	</select>
+
+	<insert id="insertTrDetail" parameterType="TrDetail">
+        	INSERT INTO IF_TR_DETAIL
+				(DELI_NO
+				, DELI_DETAIL_SEQ
+				, ORDER_CODE
+				, ORDER_DETAIL_SEQ
+				, STATUS
+				, ORDER_CNCL_TYPE
+				, PICK_AREA
+				, PICK_SORT
+				, VARIANT_FLAG
+				, PACK_METHOD_FLAG
+				, JM_PRODUCT_YN
+				, JM_PRODUCT_MESSAGE
+				
+				
+				, REPLACE_CODE
+				, REPLACE_MESSAGE
+
+				, PRODUCT_ID
+				, ORG_PRODUCT_ID
+				, QTY
+				, ALLC_QTY
+				, PICK_QTY
+				, INSP_QTY
+				, SALE_MONEY
+				, CLASS_CODE
+				, GROUP_CODE
+				, WEIGHT
+				, CBM
+				, ORDER_DATE
+				, DELI_ORDER
+				, ORDER_WANTED_DELI_DATE
+				, RESERVE_DATE
+				, RESERVE_DELI_ORDER
+				, GROUPKEY
+				, MASTER_TOTE_AREA
+					) VALUES
+					(
+			     		 #{deliNo}
+						,#{deliDetailSeq}
+						,#{orderCode}
+						,#{orderDetailSeq}
+						,'05'
+						,#{orderCnclType}
+						,#{pickArea}
+						,#{pickSort}
+						,#{variantFlag}
+						,#{packMethodFlag ,jdbcType=VARCHAR}
+						
+						,#{jmProductMessage ,jdbcType=VARCHAR}
+						
+						,#{jmPrintCnt ,jdbcType=VARCHAR}
+						,#{replaceReasonCode ,jdbcType=VARCHAR}
+						,#{replaceMessage ,jdbcType=VARCHAR}
+
+						,#{productId ,jdbcType=VARCHAR}
+						,#{orgProductId ,jdbcType=VARCHAR}
+						,#{qty}
+						,#{allcQty}
+						,#{pickQty}
+						,#{inspQty}
+						,#{saleMoney}
+						,#{classCode ,jdbcType=VARCHAR}
+						,#{groupCode ,jdbcType=VARCHAR}
+						,#{weight ,jdbcType=VARCHAR}
+						,#{cbm ,jdbcType=VARCHAR}
+						,#{orderDate ,jdbcType=VARCHAR}
+						,#{deliOrder ,jdbcType=VARCHAR}
+						,#{orderWantedDeliData ,jdbcType=VARCHAR}
+						,#{reserveDate ,jdbcType=VARCHAR}
+						,#{reserveDeliOrder ,jdbcType=VARCHAR}
+						,#{groupkey ,jdbcType=VARCHAR}
+						,#{masterToteArea ,jdbcType=VARCHAR}
+
+
+	)
+    </insert>
+    <insert id="insertTrHeader" parameterType="TrHeader">
+    INSERT INTO IF_TR_HEADER
+    (
+         DELI_NO
+		,ORG_DELI_NO
+		,DELI_ORDER
+		,DELI_DATE
+		,DELI_START_TIME
+		,DELI_END_TIME
+		,CENTER_CODE
+		,DELI_METHOD
+		,DELI_ORDER_TYPE
+		,DELI_PICK_TYPE
+		,DELI_DIV
+		,STATUS
+		,ERP_ORDER_CNT
+		,ERP_RESERVE_ORDER_CNT
+		,MEMBER_CODE
+		,ORDER_ID
+		,ORDER_NAME
+		,ORDER_EMAIL
+		,ORDER_HP
+		,RECE_NAME
+		,RECE_ZIPCODE
+		,RECE_ADDR1
+		,RECE_ADDR2
+		,RECE_TEL
+		,RECE_HP
+		,CAR_ID
+		,CAR_NUMBER
+		,DELI_ID
+		,DELI_NAME
+		,DELI_ORDER_SORT
+		,DELI_TYPE
+		,DELI_SAVE_CODE
+		,ORDER_REGULAR_YN
+		)
+		VALUES
+			(
+				#{deliNo},
+				#{orgDeliNo},
+				#{deliOrder},
+				#{deliDate},
+				#{deliStartTime},
+				#{deliEndTime},
+				#{centerCode},
+				#{deliMethod},
+				#{deliOrderType},
+				#{deliPickType},
+				#{deliDiv},
+				'05',
+				#{erpOrdercnt},
+				#{erpReserveOrderCnt},
+				#{memberCode},
+				#{orderId},
+				#{orderName ,jdbcType=VARCHAR},
+				#{orderEmail ,jdbcType=VARCHAR},
+				#{orderHp ,jdbcType=VARCHAR},
+				#{receName ,jdbcType=VARCHAR},
+				#{receZipcode ,jdbcType=VARCHAR},
+				#{receAddr1 ,jdbcType=VARCHAR},
+				#{receAddr2 ,jdbcType=VARCHAR},
+				#{receTel ,jdbcType=VARCHAR},
+				#{receHp ,jdbcType=VARCHAR},
+				#{carId ,jdbcType=VARCHAR},
+				#{carNumber ,jdbcType=VARCHAR},
+				#{deliId ,jdbcType=VARCHAR},
+				#{deliName ,jdbcType=VARCHAR},
+				#{deliOrderSort ,jdbcType=VARCHAR},
+				#{deliType ,jdbcType=VARCHAR},
+				#{deliSaveCode ,jdbcType=VARCHAR},
+				#{orderRegularYn ,jdbcType=VARCHAR}
+			)
+    </insert>
+</mapper>

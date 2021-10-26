@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mwd.picking.mapper.ManualMapper">
+
+    <select id="selectJangmanList" resultType="hashmap">
+        <![CDATA[
+
+SELECT
+       *
+FROM(
+SELECT
+ /*+ INDEX(A PK1) */
+	    ROWNUM AS RNUM,
+       ORDER_CODE,
+                    ORDER_ID,
+                    ORDER_NAME,
+                    PRODUCT_CODE,
+                    PRODUCT_NAME,
+                    PRO_OPTION_VALUE,
+                    JM_PRINT_CNT,
+                    PICK_AREA,
+                    ROWSPAN,
+                    CNT,
+                    DELI_DATE,
+                    STATUS,
+                    DELI_ORDER
+       FROM (SELECT ORDER_CODE,
+                    ORDER_ID,
+                    ORDER_NAME,
+                    PRODUCT_CODE,
+                    PRODUCT_NAME,
+                    PRO_OPTION_VALUE,
+                    JM_PRINT_CNT,
+                    PICK_AREA,
+                    rowspan,
+                    CNT,
+                    DELI_DATE,
+                    STATUS,
+                    DELI_ORDER
+             FROM (SELECT A.DELI_NO,
+                          B.ORDER_CODE,
+                          A.ORDER_ID,
+                          A.ORDER_NAME,
+                          C.PRODUCT_CODE,
+                          C.PRODUCT_NAME,
+                          D.PRO_OPTION_VALUE,
+                          CASE
+                            WHEN D.RES_PRINT_CNT > B.JM_PRINT_CNT THEN D.RES_PRINT_CNT
+                            ELSE B.JM_PRINT_CNT
+                              END          JM_PRINT_CNT,
+                          B.PICK_AREA,
+                          A.DELI_DATE,
+                          A.STATUS,
+                          A.DELI_ORDER,
+                          '1' as           rowspan,
+                          COUNT(*) OVER () CNT
+                   FROM IF_TR_HEADER A,
+                        IF_TR_DETAIL B,
+                        IF_MT_PRODUCT C,
+                        (SELECT A.*, DECODE(B.PRINT_YN, 'Y', 1, 0) AS RES_PRINT_CNT
+                         FROM OMS.SA_TR_DETAIL@ECODEV A,
+                              OMS.SS_LOG_PICK_PRINT_HIST@ECODEV B
+                         WHERE A.ORDER_CODE = B.ORDER_CODE (+)) D
+                   WHERE A.DELI_NO = B.DELI_NO
+                     AND B.PRODUCT_ID = C.PRODUCT_CODE
+                     AND B.ORDER_CODE = D.ORDER_CODE
+                     AND B.ORDER_DETAIL_SEQ = D.ORDER_DETAIL_SEQ
+                     AND B.PRODUCT_ID = D.PRODUCT_ID
+                       -- 점포코드
+                     AND A.CENTER_CODE = #{storeCode}
+                       -- 배송주문유형 : B2C 고정
+                     AND A.DELI_ORDER_TYPE = 'B2C'
+                       -- DETAIL 상태, 99 : 삭제건 제외
+                     AND A.STATUS <> '99'
+                     AND B.STATUS <> '99'
+                     AND B.JM_FLAG = '1' -- 손질
+                     ]]>
+        <if test='groupCode != null and groupCode != ""'>
+            <![CDATA[
+	           				AND B.GROUP_CODE = #{groupCode}
+	         			]]>
+        </if>
+        <![CDATA[
+        			-- AND B.GROUP_CODE = '713' -- 713 : 농산, 714 : 수산, 715 : 축산, 610 : 베이커리
+                       -- HEADER 상태 : 05 : 배차완료, 10 : 피킹지시, 15 : 피킹중, 20 : 피킹완료
+                   
+                     AND B.JM_PRODUCT_YN = 'Y' -- 장만여부
+                      ]]>
+        <if test='deliOrder != null and deliOrder != ""'>
+            <![CDATA[
+	           AND A.DELI_ORDER = #{deliOrder}
+	         ]]>
+        </if>
+        <if test='deliDate != null and deliDate != ""'>
+            <![CDATA[
+	           AND A.DELI_DATE = #{deliDate}
+	           ]]>
+        </if>
+
+        <!-- <if test='deliDiv != null and deliDiv != ""'>
+            <![CDATA[ -->
+	             AND A.DELI_DIV IN('O01','O03')
+	            <!-- ]]>
+        </if> -->
+        <!-- <if test='pickArea != null and pickArea != ""'>
+            <![CDATA[
+		        AND B.PICK_AREA = #{pickArea}
+		    ]]>
+        </if> -->
+
+	    <if test='deliMethod != null and deliMethod != ""'>
+	        <![CDATA[
+		        AND A.DELI_METHOD = #{deliMethod}
+		    ]]>
+	    </if>
+        
+        )
+        ORDER BY DECODE(JM_PRINT_CNT, 0, 0, 1), DELI_NO, ORDER_CODE, PRODUCT_CODE
+        )
+        )
+        WHERE RNUM BETWEEN ${pageGroup} AND ${limit}
+
+    </select>
+
+    <!-- 장만출력내역 저장..-->
+    <update id="insertJmPrintOrder" parameterType="string">
+UPDATE IF_TR_DETAIL SET JM_PRINT_CNT = JM_PRINT_CNT + 1 WHERE ORDER_CODE = #{orderCode} AND JM_PRODUCT_YN = 'Y'
+</update>
+
+    <!-- 장만출력내역 저장..-->
+    <update id="insertJmPrintOrder1" parameterType="string">
+     
+  MERGE INTO
+                OMS.SS_LOG_PICK_PRINT_HIST@ECODEV A
+            USING
+                (
+                  SELECT  #{orderCode} ORDER_CODE FROM DUAL
+                ) B
+            ON
+                (A.ORDER_CODE = B.ORDER_CODE
+                )
+            WHEN MATCHED THEN
+                UPDATE
+                   SET  A.PRINT_YN  = 'Y'
+                         , A.REQ_PAGE   = 'MWD_PICKING'
+            WHEN NOT MATCHED THEN
+                INSERT (STORE_CODE, ORDER_CODE, REG_DATE, WORK_GROUP, PRINT_YN, REQ_PAGE)
+                VALUES ((SELECT STORE_CODE FROM OMS.SA_TR_HEADER@ECODEV WHERE ORDER_CODE = #{orderCode}), #{orderCode}, SYSDATE, TO_CHAR(SYSDATE,'YYYYMMDDHH24MI'),'Y','MWD_PICKING')
+</update>
+
+    <!-- 장만 헤더정보 조회
+             남천점 105 : 아이패드
+             남천점  30 : RES
+          -->
+    <select id="getJmHeaderInfo" parameterType="hashMap" resultType="JmHeader">
+     SELECT
+        S.*
+      FROM (
+       SELECT
+               K.STORE_CODE
+             , K.ORDER_DATE
+             , to_char(K.ORDER_REAL_DATE,'YYYY-MM-DD HH24:MI') ORDER_DATE_PRINT
+             , K.ORDER_SEQ
+             , K.ORDER_CODE
+             , K.DELI_REGION_NAME
+             , K.RECE_NAME
+             , K.RECE_ADDR1
+             , K.RECE_ADDR2
+             , NVL(K.ORDER_MESSAGE,'_')  ORDER_MESSAGE
+             , K.DELIV_DATE
+             , K.ORDER_NAME
+             , K.ORDER_ID
+             , K.DELI_START_TIME
+             , K.DELI_ORDER
+             , K.DELI_TYPE
+             , K.ORDER_DELI_METHOD
+             , nvl(K.ORDER_TEL,' ') ORDER_TEL
+             , K.ORDER_HP
+             , TO_CHAR(TO_DATE(K.ORDER_END_TIME,'YYYYMMDD hh24:MI') + 60/(24*60),'hh24:MI') PICK_UP_TIME
+             , TO_CHAR(TO_DATE(K.DELI_START_TIME,'YYYYMMDD hh24:MI'),'hh24:MI') START_TIME
+             , TO_DATE(K.DELI_START_TIME,'YYYYMMDD hh24:MI') - 2/(24) PRINT_TIME
+             , K.ORDER_WANTED_DELI_DATE
+             , K.PRINT_IP_C
+             , K.PRINT_IP_N
+             , K.PRINT_IP_S
+             , K.PRINT_IP_B
+             , K.PRINT_IP_P
+             , K.PRINT_IP_P2
+             , K.PRINT_IP_P3
+             , K.PRINT_IP_P4
+             , nvl((SELECT REQ_PAGE  FROM OMS.SS_LOG_PICK_PRINT_HIST@ECODEV S WHERE K.ORDER_CODE = S.ORDER_CODE AND ROWNUM=1),' ') REQ_PAGE
+             ,(SELECT COUNT(1) FROM OMS.SA_TR_DETAIL@ECODEV S WHERE S.ORDER_CODE = K.ORDER_CODE AND (nvl(S.JM_PRODUCT_YN,' ') = 'Y' or nvl(S.JM_PRODUCT_YN,' ') = '1') ) JM_CNT
+             , K.DELI_TITLE
+        FROM  (
+              SELECT
+                     A.STORE_CODE
+                   , A.ORDER_DATE
+                   , A.ORDER_REAL_DATE
+                   , A.ORDER_SEQ
+                   , A.ORDER_CODE
+                   , A.ORDER_NAME
+                   , A.RECE_NAME
+                   , A.RECE_ADDR1
+                   , A.RECE_ADDR2
+                   , A.REPLACE_MESSAGE ORDER_MESSAGE
+                   , A.ORDER_ID
+                   , A.DELI_ORDER
+                   , A.DELI_TYPE
+                   , nvl(A.ORDER_TEL,' ')  ORDER_TEL
+                   , A.ORDER_HP
+                   , A.ORDER_DELI_METHOD
+                   , TO_CHAR(ORDER_WANTED_DELI_DATE,'YYYY/MM/DD')||'('|| DECODE(to_char( ORDER_WANTED_DELI_DATE, 'd'), 1, '일', 2, '월', 3, '화', 4, '수', 5, '목', 6, '금', 7, '토')||')' DELIV_DATE
+                   , OMS.F_DELI_REGION_NAME@ECODEV(DELI_TYPE) DELI_REGION_NAME
+                   , TO_CHAR(SYSDATE,'YYYYMMDD') ||(SELECT DELI_START_TIME
+                                                      FROM OMS.MT_DELI_STORE_SCHEDULE@ECODEV K
+                                                     WHERE K.ORDER_DELI_METHOD = A.ORDER_DELI_METHOD
+                                                       AND K.PERIOD = A.DELI_ORDER
+                                                       AND K.STORE_CODE = A.STORE_CODE
+                                                       AND ROWNUM=1) DELI_START_TIME
+                   , TO_CHAR(SYSDATE,'YYYYMMDD') ||(SELECT ORDER_END_TIME
+                                                      FROM OMS.MT_DELI_STORE_SCHEDULE@ECODEV K
+                                                     WHERE K.ORDER_DELI_METHOD = A.ORDER_DELI_METHOD
+                                                       AND K.PERIOD = A.DELI_ORDER
+                                                       AND K.STORE_CODE = A.STORE_CODE
+                                                       AND ROWNUM=1) ORDER_END_TIME
+                   , ORDER_WANTED_DELI_DATE
+                   , B.PRINT_IP_S PRINT_IP_S
+                   , B.PRINT_IP_N PRINT_IP_N
+                   , B.PRINT_IP_C PRINT_IP_C
+                   , B.PRINT_IP_P PRINT_IP_P
+                   , B.PRINT_IP_B PRINT_IP_B
+                   , B.PRINT_IP_P2 PRINT_IP_P2
+                   , B.PRINT_IP_P3 PRINT_IP_P3
+                   , B.PRINT_IP_P4 PRINT_IP_P4
+                   ,(CASE WHEN ORDER_DELI_METHOD = '1' AND DELI_TYPE = 'Z' AND OUTER_CHANNEL_CODE = 'CUP'  THEN '택배(쿠팡)'
+                                              WHEN ORDER_DELI_METHOD = '1' AND DELI_TYPE = 'Z' AND OUTER_CHANNEL_CODE = 'WMP'  THEN '택배(위메프)'
+                                              WHEN ORDER_DELI_METHOD = '1' AND DELI_TYPE = 'Z' AND OUTER_CHANNEL_CODE = 'EST'  THEN '택배(11번가)'
+                                              WHEN ORDER_DELI_METHOD = '1' AND DELI_TYPE = 'Z' AND OUTER_CHANNEL_CODE = 'MALL' THEN '택배(사방넷)'
+                                              WHEN ORDER_DELI_METHOD = '1' AND DELI_TYPE = 'Z' AND OUTER_CHANNEL_CODE IS NULL  THEN '택배(자사몰)'
+                                              WHEN ORDER_DELI_METHOD = '2' THEN '●드라이브스루'
+                                              WHEN ORDER_DELI_METHOD = '3' THEN '새벽배송★'
+                                         ELSE '매장배송(배달)'
+                                         END) DELI_TITLE
+               FROM  OMS.SA_TR_HEADER@ECODEV A, OMS.SS_PRINTER_IP@ECODEV B
+            WHERE 1=1
+              AND A.STORE_CODE  = B.STORE_CODE
+              AND ORG_ORDER_CODE IS NULL
+              AND ORDER_FLAG = '0601'
+              AND ORDER_DELI_FLAG IN ('0701', '0702', '0703','0704','0705')
+              AND ORDER_CODE =  #{ORDER_CODE}
+            ) K
+     ) S WHERE 1=1
+    </select>
+
+    <!-- 장만 상세내역 조회-->
+    <select id="getJmDetailInfo" parameterType="hashMap" resultType="hashMap">
+        SELECT NVL(A.MD_STYLE_ID, A.PRODUCT_ID) PRODUCT_ID,
+        A.QTY,
+        A.SALE_PRICE,
+        A.SALE_MONEY,
+        A.SALE_VAT,
+        A.PRODUCT_GAGE PRO_GAGE,
+        A.ORDER_FLAG,
+        A.PRO_TAX_FLAG,
+        OMS.F_PRODUCT_NAME@ECODEV(A.PRODUCT_ID) PRO_NAME ,
+        A.MP_PRODUCT_ID,
+        A.MP_PRICE CMS_PRICE ,
+        DECODE(A.MP_COUNT, 0, 0, FLOOR(A.QTY/A.MP_COUNT)) CMS_QTY ,
+        A.FREE_PRODUCT_ID,
+        A.FREE_PRICE FREE_PRICE ,
+        DECODE(A.FREE_COUNT, 0, 0, FLOOR(A.QTY/A.FREE_COUNT)) FREE_QTY ,
+        '' S_CMS_PRODUCT_ID,
+        0 S_CMS_PRICE ,
+        0 S_CMS_QTY ,
+        A.MORE_PRODUCT_ID,
+        A.MORE_PRICE MORE_PRICE ,
+        DECODE(A.MORE_PRICE, 0, 0, A.QTY) MORE_QTY ,
+        A.CARD_PRODUCT_ID,
+        NVL(A.CARD_PRICE, 0) C_CMS_PRICE ,
+        DECODE(A.CARD_COUNT, 0, 0, FLOOR(A.QTY/A.CARD_COUNT)) C_CMS_QTY ,
+        '' OPTION_GROUP_VALUE,
+        A.DISCOUNT_MONEY DISCOUNT_PRICE,
+        A.GROUP_CODE,
+        nvl(A.PRO_OPTION_VALUE,' ') PRO_OPTION_VALUE,
+        A.COMPENSATION_MONEY,
+        '동래점'||' '||(CASE WHEN A.GROUP_CODE = '715' THEN '축산'
+        WHEN A.GROUP_CODE = '713' THEN '농산'
+        WHEN A.GROUP_CODE = '714' THEN '수산'
+        WHEN A.GROUP_CODE = '610' THEN '베이커리'
+        ELSE ''
+        END) GROUP_DESC
+        FROM   OMS.SA_TR_DETAIL@ECODEV A,
+        OMS.MT_PRODUCT@ECODEV   B,
+        OMS.MT_STORE_PRODUCT_DELIVERY@ECODEV  C
+        WHERE  1=1
+        AND  A.PRODUCT_ID   = B.PRODUCT_CODE
+        AND  B.PRODUCT_CODE = C.PRODUCT_CODE
+        AND  A.STORE_CODE   = C.STORE_CODE
+        AND  A.ORDER_FLAG   = '0601'
+        AND  C.JM_FLAG      = '1'
+        AND  A.GROUP_CODE IN ('726','714','715','610','609','713')
+        <!-- <if test = 'REQ_FLAG == "RESERVE"'>
+        AND  A.RESERVE_DATE IS NOT NULL
+        </if>
+        <if test = 'REQ_FLAG != "RESERVE"'>
+        AND  A.RESERVE_DATE IS NULL
+        </if> -->
+        AND  A.ORDER_CODE    =  #{ORDER_CODE}
+    </select>
+
+</mapper>

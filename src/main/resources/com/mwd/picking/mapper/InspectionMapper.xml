@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mwd.picking.mapper.InspectionMapper">
+
+<select id="getInspection" parameterType="Inspection" resultType="Inspection">
+SELECT DISTINCT *
+  FROM (
+  		SELECT /*+ INDEX(A PK1) */
+  	           ROWNUM AS RNUM
+  	         , A.CENTER_CODE
+  	         , A.DELI_DATE
+  	         , A.DELI_ORDER
+  	         , A.DELI_NO
+  	         , A.ORG_DELI_NO
+  	         , A.ORDER_NAME
+  	         , A.DELI_DETAIL_SEQ
+  	         , A.ORDER_CODE
+  	         , A.ORDER_DETAIL_SEQ
+  	         , A.DELI_SAVE_CODE
+  	         , A.PRODUCT_ID
+  	         , A.PRODUCT_NAME
+  	         , A.QTY
+  	         , A.PICK_QTY
+  	         , A.INSP_QTY
+  	         , A.STATUS
+  	         , A.STATUS_NM
+  	         , A.IMG_URL
+  	         , A.ORDER_ID
+  	         , A.CNT
+             , A.DELI_METHOD
+         FROM ( SELECT  
+		               A.CENTER_CODE
+		             , A.DELI_DATE
+		             , A.DELI_ORDER
+		             , A.DELI_NO
+		             , A.ORG_DELI_NO
+		             , A.ORDER_ID
+		             , A.ORDER_NAME
+		             , B.DELI_DETAIL_SEQ
+		             , B.ORDER_CODE
+		             , B.ORDER_DETAIL_SEQ
+		             , A.DELI_SAVE_CODE
+		             , B.PRODUCT_ID
+		             , C.PRODUCT_NAME
+		             , B.QTY
+		             , B.PICK_QTY
+		             , B.INSP_QTY
+		             , B.STATUS
+		             , F_GET_ETCNM('OMS_STATUS', B.STATUS) AS STATUS_NM
+		             , C.IMG_URL
+					 , COUNT(*) OVER () CNT
+  					 , A.DELI_METHOD
+		        FROM IF_TR_HEADER A, IF_TR_DETAIL B, MT_PRODUCT_V1 C
+		       WHERE 1=1
+		         AND A.DELI_NO = B.DELI_NO
+                 AND A.CENTER_CODE = C.STORE_CODE
+				 AND B.PRODUCT_ID = C.PRODUCT_CODE
+				 AND A.CENTER_CODE = #{storeCode}
+				 AND A.DELI_DIV = 'O09'
+				 AND A.STATUS BETWEEN '01' AND '40'
+				 AND A.STATUS != '99'
+				 AND B.STATUS != '99'
+				 <if test='deliDate != null and deliDate != ""'>
+			 	 <![CDATA[
+				 AND A.DELI_DATE = #{deliDate}
+				 ]]>
+				 </if>
+		       ORDER BY B.STATUS, B.DELI_NO, B.DELI_DETAIL_SEQ
+              ) A
+	   WHERE 1=1
+       )
+ WHERE RNUM BETWEEN ${pageGroup} AND ${limit}
+</select>
+
+<select id="getInspectionCandidate" parameterType="Inspection" resultType="Inspection">
+SELECT DISTINCT A.CENTER_CODE,
+       B.DELI_NO,
+       B.DELI_DETAIL_SEQ,
+       B.ORDER_CODE,
+       B.ORDER_DETAIL_SEQ
+  FROM IF_TR_HEADER A, IF_TR_DETAIL B
+ WHERE 1=1
+   AND A.DELI_NO = B.DELI_NO
+   AND A.CENTER_CODE = #{storeCode}
+   AND A.DELI_DIV IN ('O01','O03')
+   AND A.STATUS > '35'
+   AND B.ORDER_CODE = #{orderCode}
+   AND B.ORDER_DETAIL_SEQ = #{orderDetailSeq}
+</select>
+
+<update id="updateInspectionPickForO01_O03" parameterType="inspection">
+UPDATE IF_TR_PICK
+   SET STATUS = '99'
+     , CREATE_BY = #{pickerId}
+     , LAST_UPDATE_DATE = SYSDATE
+ WHERE 1=1
+   AND DELI_NO = #{deliNo}
+   AND DELI_DETAIL_SEQ = #{deliDetailSeq}
+</update>
+
+<update id="updateInspectionDetailForO01_O03" parameterType="inspection">
+UPDATE IF_TR_DETAIL
+   SET STATUS = '99'
+     , IF_CREATE_BY = #{pickerId}
+     , IF_LAST_UPDATE_DATE = SYSDATE
+     , ALLC_QTY = 0
+     , PICK_QTY = 0
+     , INSP_QTY = 0
+     , ORDER_CNCL_TYPE = '4'
+ WHERE 1=1
+   AND DELI_NO = #{deliNo}
+   AND DELI_DETAIL_SEQ = #{deliDetailSeq}
+</update>     
+
+<update id="updateInspectionHeaderForO01_O03" parameterType="inspection">
+UPDATE IF_TR_HEADER
+   SET STATUS = MIF.F_GET_DELI_HSTATUS(#{deliNo})
+ WHERE 1=1
+   AND DELI_NO = #{deliNo}
+</update>
+
+<update id="updateInspectionDetailForO09" parameterType="inspection">
+UPDATE IF_TR_DETAIL
+   SET STATUS = '40'
+     , IF_CREATE_BY = #{pickerId}
+     , IF_LAST_UPDATE_DATE = SYSDATE
+ WHERE 1=1
+   AND DELI_NO = #{deliNo}
+   AND DELI_DETAIL_SEQ = #{deliDetailSeq}
+</update>
+
+<update id="updateInspectionHeaderForO09" parameterType="inspection">
+UPDATE IF_TR_HEADER
+   SET STATUS = MIF.F_GET_DELI_HSTATUS(#{deliNo})
+ WHERE 1=1
+   AND DELI_NO = #{deliNo}
+</update>
+
+</mapper>

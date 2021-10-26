@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mwd.picking.mapper.BulkMapper">
+
+	<!-- 
+	*
+	*	이형주문목록조회
+	*
+	-->
+	<select id="selectBulkDeliList" parameterType="Manual" resultType="Manual">
+		<![CDATA[
+		SELECT INNER_TBL.* FROM (
+			SELECT ROW_NUMBER() OVER (ORDER BY B.STATUS DESC, B.VARIANT_PRINT_BY DESC, B.VARIANT_PRINT_BY, B.PRODUCT_ID, B.ORDER_CODE ) AS RNUM
+				 , A.CENTER_CODE
+			     , A.DELI_NO
+				 , B.DELI_DETAIL_SEQ
+				 , B.PACK_METHOD_FLAG || A.DELI_NO || LPAD(B.DELI_DETAIL_SEQ, 3, 0) AS BARCODE
+				 , A.DELI_DATE
+				 , A.DELI_METHOD
+				 , A.DELI_ORDER
+				 , A.ORDER_NAME
+				 , B.ORDER_CODE
+				 , B.ORDER_DETAIL_SEQ
+				 , D.ORDER_MESSAGE
+				 , B.PRODUCT_ID
+				 , C.PRODUCT_NAME
+				 , B.QTY
+				 , B.PICK_QTY
+				 , B.STATUS
+				 , MIF.F_GET_ETCNM('OMS_STATUS', A.STATUS) AS STATUS_NAME
+				 , B.VARIANT_PRINT_CNT
+				 , B.VARIANT_PRINT_BY
+				 , A.DELI_SAVE_CODE
+				 , B.PACK_METHOD_FLAG
+				 , A.CAR_ID
+				 , A.CAR_NUMBER
+				 , A.DELI_ID
+				 , A.DELI_NAME
+				 , B.REPLACE_CODE
+			     , B.SALE_MONEY	
+			     , COUNT(*) OVER() AS CNT
+			  FROM MIF.IF_TR_HEADER A
+			  	 , MIF.IF_TR_DETAIL B
+			  	 , SA_TR_HEADER_V1 D
+			  	 , MIF.MT_PRODUCT_V1 C
+			 WHERE 1=1
+			   AND A.DELI_NO        = B.DELI_NO
+			   AND B.ORDER_CODE     = D.ORDER_CODE
+			   AND A.CENTER_CODE    = C.STORE_CODE
+			   AND B.PRODUCT_ID     = C.PRODUCT_CODE
+			   AND A.DELI_PICK_TYPE = '1'
+			   AND A.STATUS >= '05'
+			   AND A.STATUS != '99'
+			   AND B.STATUS != '99'
+			   AND A.CENTER_CODE = #{storeCode}
+			   ]]>
+			   <if test='deliDate != null and deliDate != ""'>
+			   		AND A.DELI_DATE = #{deliDate}
+			   </if>
+			   <if test='deliOrder != null and deliOrder != ""'>
+			   		AND A.DELI_ORDER = #{deliOrder}
+			   </if>
+			   <if test='status != null and status != ""'>
+			   		AND A.DELI_METHOD = #{status}
+			   </if>
+		   	   <![CDATA[
+		     ORDER BY B.STATUS DESC
+			        , B.VARIANT_PRINT_BY DESC
+			        , B.VARIANT_PRINT_BY
+			        , B.PRODUCT_ID
+			) INNER_TBL
+			WHERE 1=1
+			  AND INNER_TBL.RNUM BETWEEN ${pageGroup} AND ${limit}
+			]]>
+	</select>
+
+	<!-- 
+	*
+	*	이형피킹정보 조회
+	*
+	-->
+	<select id="selectBulkPickList" parameterType="hashmap" resultType="hashmap">
+		<![CDATA[
+			SELECT A.CENTER_CODE
+			     , A.DELI_NO
+		     	 , B.DELI_DETAIL_SEQ
+		     	 , B.QTY
+		     	 , NVL(#{pickQty}, B.PICK_QTY) AS PICK_QTY
+		     	 , B.PICK_AREA
+		     	 , B.PICK_SORT
+		     	 , B.STATUS
+		     	 , B.ORG_PRODUCT_ID
+		     	 , B.ORDER_CODE
+		     	 , B.ORDER_DETAIL_SEQ
+		     	 , #{pickerId} AS PICKERID
+			  FROM IF_TR_HEADER A
+			     , IF_TR_DETAIL B
+			 WHERE 1=1
+			   AND A.DELI_NO         = B.DELI_NO
+			   AND A.CENTER_CODE     = #{storeCode}
+			   AND A.DELI_PICK_TYPE  = #{deliPickType}					
+			   AND A.DELI_NO         = #{deliNo}
+			   AND B.DELI_DETAIL_SEQ = #{deliDetailSeq}
+			   AND A.STATUS <> '99'
+			   AND B.STATUS <> '99'
+			   ]]>
+			   <if test='status != null and status != ""'>
+			   		AND B.STATUS = #{status}
+			   </if>
+	</select>
+
+	<!-- 
+	*
+	*	IF_TR_DETAIL 상태 변경
+	*
+	-->
+	<update id="updateBulkDetailStatus" parameterType="hashmap">
+		<![CDATA[
+			UPDATE IF_TR_DETAIL
+			   SET STATUS = #{TOSTATUS}
+			   ]]>
+			   <if test="TOSTATUS != null and TOSTATUS == '01'">
+			   		, ALLC_QTY        = #{ALLC_QTY}
+			   		, PICK_QTY        = #{PICK_QTY}
+			   		, INSP_QTY        = #{INSP_QTY}
+			   		, ORDER_CNCL_TYPE = #{ORDER_CNCL_TYPE}
+			   </if>
+			   <if test="TOSTATUS != null and TOSTATUS == '40'">
+			   		, ALLC_QTY        = #{ALLC_QTY}
+			   		, PICK_QTY        = #{PICK_QTY}
+			   		, INSP_QTY        = #{INSP_QTY}
+			   		, ORDER_CNCL_TYPE = #{ORDER_CNCL_TYPE}
+			   </if> 
+			   <if test="TOSTATUS != null and TOSTATUS == '99'">
+			   		, ALLC_QTY 		  = #{ALLC_QTY}
+			   		, PICK_QTY 		  = #{PICK_QTY}
+			   		, INSP_QTY 		  = #{INSP_QTY}
+			   		, ORDER_CNCL_TYPE = #{ORDER_CNCL_TYPE}
+			   </if> 
+			   <![CDATA[
+			     , IF_LAST_UPDATE_DATE = SYSDATE
+      			 , IF_LAST_UPDATE_BY   = #{PICKERID}
+			 WHERE 1=1
+			   AND DELI_NO         = #{DELI_NO}
+			   AND DELI_DETAIL_SEQ = #{DELI_DETAIL_SEQ}
+		]]>
+	</update>
+
+
+	<!-- 
+	*
+	*	IF_TR_PICK 피킹정보생성
+	*
+	-->
+	<insert id="insertBulkPick" parameterType="hashmap">
+		<selectKey resultType="String" keyProperty="DELI_PICK_SEQ" order="BEFORE">
+    		<![CDATA[
+	    		SELECT NVL(MAX(DELI_PICK_SEQ) + 1, 1) AS DELI_PICK_SEQ
+				  FROM IF_TR_PICK
+				 WHERE 1=1
+				   AND DELI_NO         = #{DELI_NO}
+				   AND DELI_DETAIL_SEQ = #{DELI_DETAIL_SEQ}
+			]]>
+    	</selectKey>
+		<![CDATA[
+		INSERT 
+		  INTO IF_TR_PICK ( DELI_NO, DELI_DETAIL_SEQ, DELI_PICK_SEQ, CART_CODE, STATUS, PICK_QTY, INSP_QTY, PICK_AREA, 
+							TOTE_TYPE, TOTE_AREA, TOTE_SORT, PICK_SORT, BCR_FLAG, BCR_DATE, IF_WCS_TRSTAT, IF_WCS_DATE, CREATE_DATE, CREATE_BY, LAST_UPDATE_DATE, LAST_UPDATE_BY ) 
+				   VALUES ( #{DELI_NO}
+				   		  , #{DELI_DETAIL_SEQ}
+				   		  , #{DELI_PICK_SEQ}
+				   		  , #{CART_CODE}
+				   		  , #{STATUS}
+				   		  , #{PICK_QTY}
+				   		  , #{INSP_QTY}
+				   		  , #{PICK_AREA}
+				   		  , #{TOTE_TYPE}
+				   		  , #{TOTE_AREA} 
+				   		  , #{TOTE_SORT}
+				   		  , #{PICK_SORT}
+				   		  , 'N'
+				   		  , NULL
+				   		  , '0'
+				   		  , NULL
+				   		  , SYSDATE
+				   		  , #{PICKERID}
+				   		  , NULL
+				   		  , NULL )
+		]]>
+	</insert>
+	
+	<!-- 
+	*
+	*	IF_TR_HEADER 상태변경
+	*
+	-->
+	<update id="updateBulkHeaderStatus" parameterType="hashmap">
+		<selectKey resultType="String" keyProperty="STATUS" order="BEFORE">
+    		<![CDATA[
+    			SELECT MIF.F_GET_DELI_HSTATUS(#{DELI_NO}) AS STATUS
+    			  FROM DUAL
+			]]>
+    	</selectKey>
+    	<![CDATA[
+    		UPDATE IF_TR_HEADER
+    		   SET STATUS              = #{STATUS}
+    		     , IF_LAST_UPDATE_DATE = SYSDATE
+    		     , IF_LAST_UPDATE_BY   = #{PICKERID}
+    		 WHERE 1=1
+    		   AND DELI_NO = #{DELI_NO}
+    	]]>
+	</update>
+	
+	<!-- 
+	*
+	*	IF_TR_PICK 상태변경
+	*
+	-->
+	<update id="updateBulkPickStatus" parameterType="hashmap">
+    	<![CDATA[
+    		UPDATE IF_TR_PICK
+    		   SET STATUS           = #{STATUS}
+    		     , LAST_UPDATE_DATE = SYSDATE
+    		     , LAST_UPDATE_BY   = #{PICKERID}
+    		 WHERE 1=1
+    		   AND DELI_NO         = #{DELI_NO}
+    		   AND DELI_DETAIL_SEQ = #{DELI_DETAIL_SEQ}
+    	]]>
+	</update>
+	
+	<!-- 
+	*
+	*	대채상품의 원상품정보 조회
+	*
+	-->
+	<select id="selectBulkOrgReplaceList" parameterType="hashmap" resultType="hashmap">
+		<![CDATA[
+			SELECT DELI_NO
+				 , DELI_DETAIL_SEQ
+			FROM IF_TR_DETAIL
+			WHERE 1=1
+			AND DELI_NO          = #{DELI_NO}
+			AND ORDER_CODE       = #{ORDER_CODE}
+			AND ORDER_DETAIL_SEQ = #{ORDER_DETAIL_SEQ}
+			AND ORDER_CNCL_TYPE  = '2'
+			AND STATUS           = '99'
+		]]>
+	</select>
+	
+	
+			
+</mapper>

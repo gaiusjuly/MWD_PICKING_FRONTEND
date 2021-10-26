@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mwd.picking.mapper.PickGenMapper">
+
+<select id="selectGroupHeader" resultType="hashmap">
+       SELECT DISTINCT
+      	H.GROUPKEY,
+      	H.CENTER_CODE,
+      	H.PICKER_ID,
+      	H.PICK_AREA,
+      	H.STATUS,
+        D.DELI_NO
+      FROM DE_PK_GROUP_HEADER H, DE_PK_GROUP_DETAIL D
+   		WHERE 1=1
+   		AND H.CENTER_CODE = #{storeCode}
+   		AND H.GROUPKEY = D.GROUPKEY
+      <if test='pickArea != null and pickArea != ""'>
+	    <![CDATA[    
+	        AND H.PICK_AREA = #{pickArea}
+	    ]]> 
+	  </if>
+   		AND H.STATUS IN ('10','12','15')
+      <if test='pickerId != null and pickerId != ""'>
+	    <![CDATA[    
+	        AND H.PICKER_ID = #{pickerId}
+	    ]]> 
+	  </if>
+      <if test='delinostr != null and delinostr != ""'>
+	    <![CDATA[    
+	        AND D.DELI_NO IN (${delinostr})
+	    ]]> 
+	  </if>
+</select>
+
+<select id="getGroupSeq" resultType="string">
+SELECT DE_PK_GROUP_SEQ.NEXTVAL FROM DUAL
+</select>
+
+<insert id="insertGroupHeader" parameterType="GroupHeader">
+ <![CDATA[
+      INSERT INTO DE_PK_GROUP_HEADER (GROUPKEY, CENTER_CODE, PICKER_ID, PICK_AREA,STATUS,CREATE_DATE, CREATE_BY, LAST_UPDATE_DATE, LAST_UPDATE_BY)
+      VALUES( #{groupkey}, #{storeCode}, #{pickerId}, #{pickArea}, #{status}, sysdate, #{pickerId}, sysdate, #{pickerId} )
+ ]]>
+</insert>
+
+<insert id="insertGroupDetail" parameterType="GroupHeader">
+ <![CDATA[
+      INSERT INTO DE_PK_GROUP_DETAIL (GROUPKEY, DELI_NO, CREATE_DATE, CREATE_BY, LAST_UPDATE_DATE, LAST_UPDATE_BY)
+      VALUES( #{groupkey}, #{deliNo}, sysdate, #{pickerId}, sysdate, #{pickerId} )
+ ]]>
+</insert>
+
+<update id="updateTrHeader" parameterType="GroupHeader">
+ <![CDATA[
+      UPDATE IF_TR_HEADER SET STATUS=#{status} WHERE DELI_NO=#{deliNo}
+ ]]>
+</update>
+
+<update id="updateTrHeaderPost" parameterType="GroupHeader">
+ <![CDATA[
+      UPDATE IF_TR_HEADER SET STATUS = MIF.F_GET_DELI_HSTATUS(${deliNo})
+   		WHERE 1=1
+    		AND DELI_NO = #{deliNo}
+ ]]>
+</update>
+
+
+<select id="selectQty" parameterType="GroupHeader" resultType="GroupHeader">
+  SELECT DELI_NO, DELI_DETAIL_SEQ, QTY FROM IF_TR_DETAIL
+  WHERE DELI_NO = #{deliNo}
+  AND PICK_AREA = #{pickArea}
+</select>
+
+<update id="updateTrDetail" parameterType="GroupHeader">
+ <![CDATA[
+     UPDATE IF_TR_DETAIL SET STATUS=#{status}, GROUPKEY=#{groupkey}, ALLC_QTY=#{qty},
+     MASTER_TOTE_AREA=#{masterToteArea}
+     WHERE DELI_NO=#{deliNo} AND DELI_DETAIL_SEQ=#{deliDetailSeq} AND PICK_AREA=#{pickArea}
+ ]]>
+</update>
+
+<!-- picking action -->
+<select id="selectMaxDeliPickSeq" parameterType="Pick" resultType="string">
+	SELECT NVL(MAX(DELI_DETAIL_SEQ) + 1, 1)
+      FROM IF_TR_PICK
+      WHERE 1=1
+      AND DELI_NO = #{deliNo}
+</select>
+
+<select id="selectHasToteSort" parameterType="Pick" resultType="string">
+    SELECT COUNT(TOTE_SORT) FROM IF_TR_PICK
+		WHERE 1=1
+		AND DELI_NO = #{deliNo}
+		AND PICK_AREA = #{pickArea}
+		AND CART_CODE = #{masterCartCode}
+		AND STATUS != '99'
+		AND ROWNUM = 1
+</select>
+
+<select id="selectExtractToteSort" parameterType="Pick" resultType="hashmap">
+  SELECT NVL(MAX(TOTE_SORT) + 1 AS TOTE_SORT,
+            (CASE WHEN PICK_AREA = 'D' THEN 100
+                     WHEN PICK_AREA = 'A' THEN 200
+                     WHEN PICK_AREA = 'B' THEN 300
+                     WHEN PICK_AREA = 'C' THEN 400
+                     ELSE 999 END)) AS TOTE_SORT
+	FROM IF_TR_PICK
+	WHERE 1=1
+	AND DELI_NO = #{deliNo}
+	AND PICK_AREA = #{pickArea}
+	AND STATUS != '99'
+	GROUP BY PICK_AREA
+</select>
+
+<update id="updateOrderInfo" parameterType="Pick">
+   UPDATE DE_PK_GROUP_HEADER
+   SET STATUS = #{status}
+   WHERE 1=1
+   AND GROUPKEY = #{groupkey}
+</update>
+
+<update id="updateCompleteTrHeader" parameterType="Pick">
+   UPDATE IF_TR_HEADER SET STATUS = MIF.F_GET_DELI_HSTATUS(#{deliNo})
+   WHERE 1=1
+   AND DELI_NO = #{deliNo}
+</update>
+
+<select id="selectOrderStatus" parameterType="string" resultType="string">
+	SELECT COUNT(*) AS STATUS
+	FROM
+	  DE_PK_GROUP_DETAIL A, IF_TR_DETAIL B
+	WHERE A.DELI_NO = B.DELI_NO
+	AND  B.GROUPKEY = #{groupkey}
+	--AND B.PICK_AREA = 'A'
+	AND B.STATUS IN('10','12','05')
+</select>
+
+<update id="updateCompleteTrDetail" parameterType="Pick">
+  UPDATE IF_TR_DETAIL SET STATUS =
+                             <!-- (CASE WHEN ALLC_QTY > 0 AND PICK_QTY = 0 THEN '10'
+                                      WHEN PICK_QTY > 0 AND (ALLC_QTY != #{pickQty}) THEN '12'
+                                      WHEN PICK_QTY > 0 AND (ALLC_QTY = #{pickQty}) THEN '15'
+                               ELSE STATUS END) -->
+                               #{status}
+                             ,
+                             PICK_QTY = #{totalPickQty}
+                             ,
+                             ORDER_CNCL_TYPE=#{orderCnclType}
+		WHERE 1=1
+		AND DELI_NO = #{deliNo}
+		AND DELI_DETAIL_SEQ = #{deliDetailSeq}
+</update>
+<update id="updateCancelPick" parameterType="Pick">
+  UPDATE IF_TR_PICK SET STATUS = #{status}
+        WHERE 1=1
+		AND DELI_NO = #{deliNo}
+		AND DELI_DETAIL_SEQ = #{deliDetailSeq}
+</update>
+<update id="updateRemoveTrDetailProduct" parameterType="Pick">
+  UPDATE IF_TR_DETAIL SET STATUS = #{status} , PICK_QTY='0'
+        WHERE 1=1
+		AND DELI_NO = #{deliNo}
+		AND DELI_DETAIL_SEQ = #{deliDetailSeq}
+</update>
+
+<update id="updateReplacementCancellation" parameterType="Pick">
+  UPDATE IF_TR_PICK SET STATUS = '10'
+        WHERE 1=1
+		AND DELI_NO = #{deliNo}
+		AND DELI_DETAIL_SEQ = #{deliDetailSeq}
+</update>
+
+<insert id="insertPick" parameterType="Pick">
+	INSERT INTO IF_TR_PICK (DELI_NO,
+	                        DELI_DETAIL_SEQ,
+	                        DELI_PICK_SEQ,
+	                        CART_CODE,
+	                        STATUS,
+	                        PICK_QTY,
+	                        INSP_QTY,
+	                        PICK_AREA,
+	                        TOTE_TYPE,
+	                        TOTE_AREA,
+	                        TOTE_SORT,
+	                        PICK_SORT,
+	                        BCR_FLAG,
+	                        IF_WCS_DATE,
+	                        CREATE_DATE,
+	                        CREATE_BY,
+	                        LAST_UPDATE_DATE,
+	                        LAST_UPDATE_BY
+                        )
+         VALUES(
+                  #{deliNo},
+                  #{deliDetailSeq}
+				  ,
+                  (
+	                  SELECT NVL(MAX(DELI_PICK_SEQ) + 1, 1)
+				      FROM IF_TR_PICK
+				      WHERE 1=1
+				      AND DELI_NO = #{deliNo}
+				      AND DELI_DETAIL_SEQ = #{deliDetailSeq}
+                  ),
+                  #{masterCartCode},
+                  #{status},
+                  #{pickQty},
+                  0,
+                  #{pickArea},
+                  #{toteType},
+                  #{toteArea},
+                  (
+			         CASE  WHEN (SELECT COUNT(TOTE_SORT)
+			                  FROM IF_TR_PICK
+			                  WHERE 1 = 1
+			                    AND DELI_NO = #{deliNo}
+			                    AND PICK_AREA = '6'
+			                    AND CART_CODE = #{masterCartCode}
+			                    AND STATUS != '99'
+			                    AND ROWNUM = 1)
+			           <![CDATA[          
+			             < 1
+			            ]]>
+			          THEN (SELECT TOTE_SORT
+			                FROM IF_TR_PICK
+			                WHERE 1 = 1
+			                  AND DELI_NO = #{deliNo}
+			                  AND PICK_AREA = #{pickArea}
+			                  AND CART_CODE = #{masterCartCode}
+			                  AND STATUS != '99'
+			                  AND ROWNUM = 1
+			               )
+			         ELSE (SELECT NVL(MAX(TOTE_SORT) + 1,
+			                          (CASE
+			                             WHEN PICK_AREA = 'D' THEN 100
+			                             WHEN PICK_AREA = 'A' THEN 200
+			                             WHEN PICK_AREA = 'B' THEN 300
+			                             WHEN PICK_AREA = 'C' THEN 400
+			                             ELSE 999 END)) AS TOTE_SORT
+			               FROM IF_TR_PICK
+			               WHERE 1 = 1
+			                 AND DELI_NO = #{deliNo}
+			                 AND PICK_AREA = #{pickArea}
+			                 AND STATUS != '99'
+			               GROUP BY PICK_AREA
+			              )
+									END
+                  )
+                  ,
+                  (
+                    SELECT PICK_SORT FROM IF_TR_DETAIL WHERE DELI_NO = #{deliNo} AND DELI_DETAIL_SEQ = #{deliDetailSeq}
+                  ),
+                  'N',
+                  SYSDATE,
+                  SYSDATE,
+                  #{pickerId},
+                  SYSDATE,
+                  #{pickerId}
+          )
+</insert>
+
+
+<select id="selectOnPickProduct" parameterType="Pick" resultType="Pick">
+  WITH ODER AS (
+		SELECT
+		B.PRODUCT_ID, C.PRODUCT_NAME
+		FROM IF_TR_HEADER A, IF_TR_DETAIL B, MIF.MT_PRODUCT_V1 C
+		WHERE 1=1
+		AND A.DELI_NO = B.DELI_NO
+		AND A.CENTER_CODE = C.STORE_CODE
+		AND B.PRODUCT_ID = C.PRODUCT_CODE
+		AND A.CENTER_CODE = #{storeCode}
+		AND A.DELI_ORDER_TYPE = 'B2C'
+		AND A.DELI_PICK_TYPE  = '0'
+		AND B.STATUS BETWEEN '10' AND '20'
+		AND A.STATUS != '99'
+		AND B.JM_PRODUCT_YN = 'N'
+		AND (A.DELI_NO, B.GROUPKEY) IN (
+		    SELECT B.DELI_NO, A.GROUPKEY FROM MIF.DE_PK_GROUP_HEADER A, MIF.DE_PK_GROUP_DETAIL B
+		    WHERE 1=1
+		    AND A.GROUPKEY = B.GROUPKEY
+		    AND A.GROUPKEY = #{groupkey}
+		)
+		GROUP BY B.PRODUCT_ID, C.PRODUCT_NAME
+		UNION ALL
+		SELECT
+		B.PRODUCT_ID, C.PRODUCT_NAME
+		FROM IF_TR_HEADER A, IF_TR_DETAIL B, MIF.MT_PRODUCT_V1 C
+		WHERE 1=1
+		AND A.DELI_NO = B.DELI_NO
+		AND A.CENTER_CODE = C.STORE_CODE
+		AND B.PRODUCT_ID = C.PRODUCT_CODE
+		AND A.CENTER_CODE = #{storeCode}
+		AND A.DELI_ORDER_TYPE = 'B2C'
+		AND A.DELI_PICK_TYPE  = '0'
+		AND B.STATUS BETWEEN '10' AND '20'
+		AND A.STATUS != '99'
+		AND B.JM_PRODUCT_YN = 'Y'
+		AND (A.DELI_NO, B.GROUPKEY) IN (
+		    SELECT B.DELI_NO, A.GROUPKEY FROM MIF.DE_PK_GROUP_HEADER A, MIF.DE_PK_GROUP_DETAIL B
+		    WHERE 1=1
+		    AND A.GROUPKEY = B.GROUPKEY
+		    AND A.GROUPKEY = #{groupkey}
+		) )
+		SELECT * FROM (
+		SELECT ODER.PRODUCT_ID, ODER.PRODUCT_NAME
+		FROM ODER
+		WHERE 1=1
+
+		)
+</select>
+
+<select id="selectOnPickTotByProduct" parameterType="Pick" resultType="Pick">
+  	SELECT  A.DELI_NO
+	           , MAX(B.ORDER_CODE) KEEP ( DENSE_RANK FIRST ORDER BY B.DELI_NO, B.DELI_DETAIL_SEQ ) AS ORDER_CODE
+	           , B.PICK_AREA
+	           , B.MASTER_CART_CODE
+	  		-- 배송번호 없이 조회(일반상품), 상품코드, 피킹지시, 피킹중
+			, MIN( CASE WHEN B.PRODUCT_ID = #{productId} AND B.STATUS IN ('10','12','15') THEN B.DELI_DETAIL_SEQ ELSE NULL END) AS DELI_DETAIL_SEQ
+	           , SUM( CASE WHEN B.PRODUCT_ID = #{productId} AND B.STATUS IN ('10','12','15') THEN B.ALLC_QTY ELSE 0 END ) AS ALLC_QTY
+	      FROM IF_TR_HEADER A, IF_TR_DETAIL B
+	      WHERE 1=1
+	        AND A.DELI_NO = B.DELI_NO
+	        AND A.CENTER_CODE     = #{storeCode}
+	        AND A.DELI_ORDER_TYPE = 'B2C'
+	        AND A.DELI_PICK_TYPE  = '0'
+	        AND B.STATUS != '99'
+	        AND A.STATUS BETWEEN '05' AND '20'
+	        AND B.PICK_AREA = #{pickArea}
+	        AND (A.DELI_NO, B.GROUPKEY) IN (
+	            SELECT B.DELI_NO, A.GROUPKEY FROM MIF.DE_PK_GROUP_HEADER A, MIF.DE_PK_GROUP_DETAIL B
+	            WHERE 1=1
+	            AND A.GROUPKEY = B.GROUPKEY
+	            AND A.GROUPKEY = #{groupkey}
+	        )
+	        GROUP BY A.DELI_NO, B.PICK_AREA, B.MASTER_CART_CODE, B.MASTER_TOTE_AREA , A.STATUS, A.ORDER_NAME, B.GROUPKEY, B.REPLACE_CODE
+
+</select>
+
+<select id="selectProductByBarcode" parameterType="string" resultType="string">
+  SELECT MIF.F_GET_SOURCE(#{productId}) FROM DUAL
+</select>
+
+<update id="rollbackassigntoteheader" parameterType="string">
+  UPDATE DE_PK_GROUP_HEADER SET STATUS=#{status} WHERE GROUPKEY=#{groupkey}
+</update>
+
+<update id="rollbackassigntotedetail" parameterType="string">
+	UPDATE IF_TR_DETAIL SET MASTER_CART_CODE = '' , MASTER_TOTE_AREA=0 WHERE GROUPKEY=#{groupkey} AND DELI_NO IN (${delinostr})
+</update>
+
+<select id="selectdelinobygroupdetail" parameterType="string" resultType="GroupHeader">
+  SELECT DELI_NO FROM DE_PK_GROUP_DETAIL WHERE GROUPKEY=#{groupkey}
+</select>
+
+<update id="rollbacktrdetail" parameterType="string">
+  UPDATE IF_TR_DETAIL SET STATUS=#{status}, PICK_QTY=0 WHERE DELI_NO IN (${delinostr}) AND PICK_AREA=#{pickArea}
+</update>
+
+<update id="rollbacktrpick" parameterType="string">
+  UPDATE IF_TR_PICK SET STATUS='99' WHERE DELI_NO IN (${delinostr}) AND PICK_AREA=#{pickArea}
+</update>
+
+</mapper>
