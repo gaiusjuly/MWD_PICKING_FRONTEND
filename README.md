@@ -4,7 +4,7 @@
 This is a compile version to vue
 Once I have been worked on John Doe mart
 Has there job being made that on a picking fullfilment
-I was take a lead technology pos.
+I was take a lead technology role.
 this job take on before, has been reading vue defferent book 5th times.
 I made great work and achived, It's my proud task was.
 
