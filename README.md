@@ -1,5 +1,5 @@
 ## Fullfilment picking store
- Spring Boot Mybatis Vue spring security yarn
+ Spring Boot Mybatis Vue spring security yarn git
 ```
 This is a compile version to vue
 Once I have been worked on John Doe mart
