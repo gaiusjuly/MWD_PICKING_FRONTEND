@@ -1,3 +1,3 @@
-## Fullfilment picking task
+## Fullfilment store
  Spring Boot + Vue
 
